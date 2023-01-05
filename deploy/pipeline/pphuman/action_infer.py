@@ -21,7 +21,7 @@ import numpy as np
 import math
 import paddle
 import sys
-from collections import Sequence
+from collections.abc import Sequence
 
 # add deploy path of PaddleDetection to sys.path
 parent_path = os.path.abspath(os.path.join(__file__, *(['..'] * 2)))
@@ -35,7 +35,10 @@ from attr_infer import AttrDetector
 
 
 class SkeletonActionRecognizer(Detector):
-    """
+    """可以用來辨識骨架點的行爲
+
+    給與一連串的骨架點做分類, 像是跌倒偵測
+
     Args:
         model_dir (str): root path of model.pdiparams, model.pdmodel and infer_cfg.yml
         device (str): Choose the device you want to run, it can be: CPU/GPU/XPU, default is CPU
@@ -86,6 +89,8 @@ class SkeletonActionRecognizer(Detector):
 
     @classmethod
     def init_with_cfg(cls, args, cfg):
+        """從config檔及命令列參數去建構這個物件"""
+
         return cls(model_dir=cfg['model_dir'],
                    batch_size=cfg['batch_size'],
                    window_size=cfg['max_frames'],
@@ -99,11 +104,12 @@ class SkeletonActionRecognizer(Detector):
                    enable_mkldnn=args.enable_mkldnn)
 
     def predict(self, repeats=1):
-        '''
+        '''執行預測, 再把預測結果複製回CPU
+
         Args:
             repeats (int): repeat number for prediction
         Returns:
-            results (dict): 
+            results (dict):
         '''
         # model prediction
         output_names = self.predictor.get_output_names()
@@ -115,6 +121,8 @@ class SkeletonActionRecognizer(Detector):
         return result
 
     def predict_skeleton(self, skeleton_list, run_benchmark=False, repeats=1):
+        """做preprocess predict postprocess"""
+
         results = []
         for i, skeleton in enumerate(skeleton_list):
             if run_benchmark:
@@ -162,18 +170,26 @@ class SkeletonActionRecognizer(Detector):
         return results
 
     def predict_skeleton_with_mot(self, skeleton_with_mot, run_benchmark=False):
-        """
+        """給予一連串骨架點 讓模型進行預測 做跌倒偵測
+
             skeleton_with_mot (dict): includes individual skeleton sequences, which shape is [C, T, K, 1]
                                       and its corresponding track id.
         """
 
         skeleton_list = skeleton_with_mot["skeleton"]
+        # skeleton_list[int]: [2 x T x 17 x 1], [(x,y), time, 17, 1]
+        # print('skeleton_list:', len(skeleton_list), [i.shape for i in skeleton_list])
         mot_id = skeleton_with_mot["mot_id"]
+        # mot_id: list of ids
+        # print('mot_id:', len(mot_id), mot_id)
         act_res = self.predict_skeleton(skeleton_list, run_benchmark, repeats=1)
         results = list(zip(mot_id, act_res))
         return results
 
     def preprocess(self, data):
+        """做模型前處理 訂在infer_cfg.yml裏面隨模型帶來的操作"""
+
+        # 從設定檔裏面parse operation出來
         preprocess_ops = []
         for op_info in self.pred_config.preprocess_infos:
             new_op_info = op_info.copy()
@@ -181,12 +197,13 @@ class SkeletonActionRecognizer(Detector):
             preprocess_ops.append(eval(op_type)(**new_op_info))
 
         input_lst = []
-        data = action_preprocess(data, preprocess_ops)
+        data = action_preprocess(data, preprocess_ops)  # 將資料放進這些ops執行
         input_lst.append(data)
         input_names = self.predictor.get_input_names()
         inputs = {}
         inputs['data_batch_0'] = np.stack(input_lst, axis=0).astype('float32')
 
+        # 資料複製到GPU中
         for i in range(len(input_names)):
             input_tensor = self.predictor.get_input_handle(input_names[i])
             input_tensor.copy_from_cpu(inputs[input_names[i]])
@@ -194,6 +211,8 @@ class SkeletonActionRecognizer(Detector):
         return inputs
 
     def postprocess(self, inputs, result):
+        """對訓練結果進行後處理, 建一個dict放結果"""
+
         # postprocess output of predictor
         output_logit = result['output'][0]
         classes = np.argpartition(output_logit, -1)[-1:]
@@ -207,7 +226,7 @@ def action_preprocess(input, preprocess_ops):
     """
     input (str | numpy.array): if input is str, it should be a legal file path with numpy array saved.
                                Otherwise it should be numpy.array as direct input.
-    return (numpy.array) 
+    return (numpy.array)
     """
     if isinstance(input, str):
         assert os.path.isfile(input) is not None, "{0} not exists".format(input)
@@ -220,8 +239,13 @@ def action_preprocess(input, preprocess_ops):
 
 
 class AutoPadding(object):
-    """
+    """對輸入的一連串骨架點做時間上的padding, 時間不足的補0, 時間太長的會取樣到正確長度
+
+    如果random_pad爲False, 時間不足補0在最後, 時間太長則線性取樣;
+    如果random_pad爲True, 時間不足則補0在前後隨機長度, 時間太長則隨機取樣
+
     Sample or Padding frame skeleton feature.
+
     Args:
         window_size (int): Temporal size of skeleton feature.
         random_pad (bool): Whether do random padding when frame length < window size. Default: False.
@@ -248,7 +272,7 @@ class AutoPadding(object):
         if T == self.window_size:
             data_pad = data[:, :self.window_size, :, :]
         elif T < self.window_size:
-            begin = random.randint(
+            begin = random.randint(                         # 有人忘了import random餒
                 0, self.window_size - T) if self.random_pad else 0
             data_pad = np.zeros((C, self.window_size, V, M))
             data_pad[:, begin:begin + T, :, :] = data[:, :T, :, :]
@@ -279,7 +303,10 @@ def get_test_skeletons(input_file):
 
 
 class DetActionRecognizer(object):
-    """
+    """在物件框中再做一次物件辨識
+
+    這邊用在抽菸辨識上, 辨識到香菸就認爲那個人在抽菸
+
     Args:
         model_dir (str): root path of model.pdiparams, model.pdmodel and infer_cfg.yml
         device (str): Choose the device you want to run, it can be: CPU/GPU/XPU, default is CPU
@@ -294,7 +321,7 @@ class DetActionRecognizer(object):
         enable_mkldnn (bool): whether to open MKLDNN
         threshold (float): The threshold of score for action feature object detection.
         display_frames (int): The duration for corresponding detected action.
-        skip_frame_num (int): The number of frames for interval prediction. A skipped frame will 
+        skip_frame_num (int): The number of frames for interval prediction. A skipped frame will
             reuse the result of its last frame. If it is set to 0, no frame will be skipped. Default
             is 0.
 
@@ -338,6 +365,8 @@ class DetActionRecognizer(object):
 
     @classmethod
     def init_with_cfg(cls, args, cfg):
+        """從config檔及命令列參數去建構這個物件"""
+
         return cls(model_dir=cfg['model_dir'],
                    batch_size=cfg['batch_size'],
                    threshold=cfg['threshold'],
@@ -353,11 +382,13 @@ class DetActionRecognizer(object):
                    enable_mkldnn=args.enable_mkldnn)
 
     def predict(self, images, mot_result):
+        """預測模型 做抽菸偵測"""
+
         if self.skip_frame_cnt == 0 or (not self.check_id_is_same(mot_result)):
-            det_result = self.detector.predict_image(images, visual=False)
-            result = self.postprocess(det_result, mot_result)
+            det_result = self.detector.predict_image(images, visual=False)  # 用裁切過的圖片再做一次YOLO物件偵測
+            result = self.postprocess(det_result, mot_result)               # 判斷偵測結果內是否有香菸 只取confidence不在意位置
         else:
-            result = self.reuse_result(mot_result)
+            result = self.reuse_result(mot_result)      # 重複使用前一次的預測結果
 
         self.skip_frame_cnt += 1
         if self.skip_frame_cnt >= self.skip_frame_num:
@@ -366,7 +397,8 @@ class DetActionRecognizer(object):
         return result
 
     def postprocess(self, det_result, mot_result):
-        np_boxes_num = det_result['boxes_num']
+        """判斷偵測結果內是否有香菸 只取confidence不在意位置"""
+        np_boxes_num = det_result['boxes_num']  # 每張圖片有幾個box的list
         if np_boxes_num[0] <= 0:
             return [[], []]
 
@@ -381,17 +413,19 @@ class DetActionRecognizer(object):
             # Current now,  class 0 is positive, class 1 is negative.
             action_ret = {'class': 1.0, 'score': -1.0}
             box_num = np_boxes_num[idx]
-            boxes = det_result['boxes'][cur_box_idx:cur_box_idx + box_num]
+            boxes = det_result['boxes'][cur_box_idx:cur_box_idx + box_num]  # 從所有boxes裏面取出某張圖片的boxes
             cur_box_idx += box_num
-            isvalid = (boxes[:, 1] > self.threshold) & (boxes[:, 0] == 0)
+            isvalid = (boxes[:, 1] > self.threshold) & (boxes[:, 0] == 0)   # 過濾class==0 過濾conf>threshold
             valid_boxes = boxes[isvalid, :]
 
             if valid_boxes.shape[0] >= 1:
+                # 有的話就取出confidence來用(bounding box的位置都沒有拿出來用)
                 action_ret['class'] = valid_boxes[0, 0]
                 action_ret['score'] = valid_boxes[0, 1]
                 self.result_history[
                     tracker_id] = [0, self.frame_life, valid_boxes[0, 1]]
             else:
+                # 沒有的話 就取上次這個id的辨識結果的confidence來用 預設最多可以重複利用20個frame
                 history_det, life_remain, history_score = self.result_history.get(
                     tracker_id, [1, self.frame_life, -1.0])
                 action_ret['class'] = history_det
@@ -414,6 +448,8 @@ class DetActionRecognizer(object):
         return result
 
     def check_id_is_same(self, mot_result):
+        """檢查track id是不是全部都在上個frame裏面出現過"""
+
         mot_bboxes = mot_result.get('boxes')
         for idx in range(len(mot_bboxes)):
             tracker_id = mot_bboxes[idx, 0]
@@ -422,6 +458,8 @@ class DetActionRecognizer(object):
         return True
 
     def reuse_result(self, mot_result):
+        """重複使用歷史記錄 只要歷史記錄裡有相同的track id就重複利用結果"""
+
         # This function reusing previous results of the same ID directly.
         mot_bboxes = mot_result.get('boxes')
 
@@ -448,7 +486,12 @@ class DetActionRecognizer(object):
 
 
 class ClsActionRecognizer(AttrDetector):
-    """
+    """在物件框中的圖片 再執行一次分類模型
+
+    可能單類別分類任務是多類別分類的一個子集吧, 所以class繼承自多分類的class, 所以重複利用preprocess()與predict()
+
+    這邊用在講電話偵測, 預測這張圖片的類別
+
     Args:
         model_dir (str): root path of model.pdiparams, model.pdmodel and infer_cfg.yml
         device (str): Choose the device you want to run, it can be: CPU/GPU/XPU, default is CPU
@@ -462,8 +505,8 @@ class ClsActionRecognizer(AttrDetector):
         cpu_threads (int): cpu threads
         enable_mkldnn (bool): whether to open MKLDNN
         threshold (float): The threshold of score for action feature object detection.
-        display_frames (int): The duration for corresponding detected action. 
-        skip_frame_num (int): The number of frames for interval prediction. A skipped frame will 
+        display_frames (int): The duration for corresponding detected action.
+        skip_frame_num (int): The number of frames for interval prediction. A skipped frame will
             reuse the result of its last frame. If it is set to 0, no frame will be skipped. Default
             is 0.
     """
@@ -505,6 +548,8 @@ class ClsActionRecognizer(AttrDetector):
 
     @classmethod
     def init_with_cfg(cls, args, cfg):
+        """從config檔及命令列參數去建構這個物件"""
+
         return cls(model_dir=cfg['model_dir'],
                    batch_size=cfg['batch_size'],
                    threshold=cfg['threshold'],
@@ -520,10 +565,12 @@ class ClsActionRecognizer(AttrDetector):
                    enable_mkldnn=args.enable_mkldnn)
 
     def predict_with_mot(self, images, mot_result):
+        """預測一個batch的所有圖片"""
+
         if self.skip_frame_cnt == 0 or (not self.check_id_is_same(mot_result)):
-            images = self.crop_half_body(images)
-            cls_result = self.predict_image(images, visual=False)["output"]
-            result = self.match_action_with_id(cls_result, mot_result)
+            images = self.crop_half_body(images)    # 切上半身圖片
+            cls_result = self.predict_image(images, visual=False)["output"]     # 預測這些圖片
+            result = self.match_action_with_id(cls_result, mot_result)          # 取出辨識結果
         else:
             result = self.reuse_result(mot_result)
 
@@ -534,6 +581,8 @@ class ClsActionRecognizer(AttrDetector):
         return result
 
     def crop_half_body(self, images):
+        """切上半身照片"""
+
         crop_images = []
         for image in images:
             h = image.shape[0]
@@ -541,6 +590,8 @@ class ClsActionRecognizer(AttrDetector):
         return crop_images
 
     def postprocess(self, inputs, result):
+        """看起來沒有做實質行爲 只是在型別轉換"""
+
         # postprocess output of predictor
         im_results = result['output']
         batch_res = []
@@ -553,6 +604,8 @@ class ClsActionRecognizer(AttrDetector):
         return result
 
     def match_action_with_id(self, cls_result, mot_result):
+        """解析分類模型預測結果class 0是表示有(在講手機) class 1表示沒有"""
+
         mot_bboxes = mot_result.get('boxes')
 
         mot_id = []
@@ -563,7 +616,7 @@ class ClsActionRecognizer(AttrDetector):
 
             cls_id_res = 1
             cls_score_res = -1.0
-            for cls_id in range(len(cls_result[idx])):
+            for cls_id in range(len(cls_result[idx])):  # 取score最大值 以及他的class
                 score = cls_result[idx][cls_id]
                 if score > cls_score_res:
                     cls_id_res = cls_id
@@ -597,6 +650,8 @@ class ClsActionRecognizer(AttrDetector):
         return result
 
     def check_id_is_same(self, mot_result):
+        """檢查track id是不是全部都在上個frame裏面出現過"""
+
         mot_bboxes = mot_result.get('boxes')
         for idx in range(len(mot_bboxes)):
             tracker_id = mot_bboxes[idx, 0]
@@ -605,6 +660,8 @@ class ClsActionRecognizer(AttrDetector):
         return True
 
     def reuse_result(self, mot_result):
+        """重複使用歷史記錄 只要歷史記錄裡有相同的track id就重複利用結果"""
+
         # This function reusing previous results of the same ID directly.
         mot_bboxes = mot_result.get('boxes')
 

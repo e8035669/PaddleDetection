@@ -18,6 +18,8 @@ from collections import Counter
 
 
 class Result(object):
+    """儲存本張frame預測得到的所有結果"""
+
     def __init__(self):
         self.res_dict = {
             'det': dict(),
@@ -65,7 +67,10 @@ class DataCollector(object):
       - skeleton_action(list of skeleton_action): refer to skeleton_action for details
     ...
     - [idN]
-  """
+
+    儲存整個影片所有frame的預測結果, 主要會用在mtmct
+    把track id當做dictionary的key, 再把每個frame的其他預測結果存在裏面
+    """
 
     def __init__(self):
         #id, frame, rect, score, label, attrs, kpts, skeleton_action
@@ -98,21 +103,21 @@ class DataCollector(object):
         for idx, mot_item in enumerate(rects):
             ids = int(mot_item[0])
             if ids not in self.collector:
-                self.collector[ids] = copy.deepcopy(self.mots)
-            self.collector[ids]["frames"].append(frameid)
-            self.collector[ids]["rects"].append([mot_item[2:]])
+                self.collector[ids] = copy.deepcopy(self.mots)      # self.mots是個模板 碰到一個新id就深度複製一個給他(怪異的寫法)
+            self.collector[ids]["frames"].append(frameid)           # 塞進frameid
+            self.collector[ids]["rects"].append([mot_item[2:]])     # 塞進bbox資訊xyxy
             if attr_res:
-                self.collector[ids]["attrs"].append(attr_res['output'][idx])
+                self.collector[ids]["attrs"].append(attr_res['output'][idx])    # 塞進行人屬性辨識結果
             if kpt_res:
                 self.collector[ids]["kpts"].append(
-                    [kpt_res['keypoint'][0][idx], kpt_res['keypoint'][1][idx]])
+                    [kpt_res['keypoint'][0][idx], kpt_res['keypoint'][1][idx]]) # 塞進骨架偵測結果 是heatmap和argmax的資訊
             if skeleton_action_res and (idx + 1) in skeleton_action_res:
                 self.collector[ids]["skeleton_action"].append(
-                    skeleton_action_res[idx + 1])
+                    skeleton_action_res[idx + 1])                               # 塞進跌倒偵測結果
             else:
                 # action model generate result per X frames, Not available every frames
                 self.collector[ids]["skeleton_action"].append(None)
-            if reid_res:
+            if reid_res:                                                        # 寫入reid的結果
                 self.collector[ids]["features"].append(reid_res['features'][
                     idx])
                 self.collector[ids]["qualities"].append(reid_res['qualities'][

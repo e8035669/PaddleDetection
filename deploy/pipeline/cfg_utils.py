@@ -13,6 +13,16 @@ class ArgsParser(ArgumentParser):
             "-o", "--opt", nargs='*', help="set configuration options")
 
     def parse_args(self, argv=None):
+        """繼承ArgumentParser去支援--opt的選項 可以覆蓋yaml裏面的參數
+
+        像是以下的-o參數 ::
+
+        python deploy/pipeline/pipeline.py --config deploy/pipeline/config/infer_cfg_pphuman.yml\
+                                           -o ATTR.model_dir=output_inference/PPLCNet_x1_0_person_attribute_945_infer/\
+                                           --video_file=test_video.mp4\
+                                           --device=gpu
+        """
+
         args = super(ArgsParser, self).parse_args(argv)
         assert args.config is not None, \
             "Please specify --config=configure_file_path."
@@ -43,6 +53,8 @@ class ArgsParser(ArgumentParser):
 
 
 def argsparser():
+    """標準的ArgumentParser的用法 解析command line argument"""
+
     parser = ArgsParser()
 
     parser.add_argument(
@@ -174,6 +186,8 @@ def argsparser():
 
 
 def merge_cfg(args):
+    """讀取config檔裏面的參數 並且合併"""
+
     # load config
     with open(args.config) as f:
         pred_config = yaml.safe_load(f)
@@ -208,13 +222,15 @@ def merge_cfg(args):
         return merge_cfg
 
     args_dict = vars(args)
-    pred_config = merge(pred_config, args_dict)
-    pred_config = merge_opt(pred_config, args_dict)
+    pred_config = merge(pred_config, args_dict)     # 看arg裏面提到的參數 如果config裏面有同名 就合併上去
+    pred_config = merge_opt(pred_config, args_dict) # 看opt選項 找到對應參數再合併
 
     return pred_config
 
 
 def print_arguments(cfg):
+    """印出config檔裏面的內容"""
+
     print('-----------  Running Arguments -----------')
     buffer = yaml.dump(cfg)
     print(buffer)

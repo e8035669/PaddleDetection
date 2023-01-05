@@ -43,6 +43,8 @@ from mot.mtmct.postprocess import get_mtmct_matching_results, save_mtmct_crops, 
 
 class SDE_Detector(Detector):
     """
+    物件偵測+物件追蹤
+
     Args:
         model_dir (str): root path of model.pdiparams, model.pdmodel and infer_cfg.yml
         tracker_config (str): tracker config path
@@ -64,14 +66,14 @@ class SDE_Detector(Detector):
         secs_interval (int): The seconds interval to count after tracking, default as 10
         skip_frame_num (int): Skip frame num to get faster MOT results, default as -1
         warmup_frame (int):Warmup frame num to test speed of MOT,default as 50
-        do_entrance_counting(bool): Whether counting the numbers of identifiers entering 
+        do_entrance_counting(bool): Whether counting the numbers of identifiers entering
             or getting out from the entrance, default as False，only support single class
             counting in MOT, and the video should be taken by a static camera.
         do_break_in_counting(bool): Whether counting the numbers of identifiers break in
             the area, default as False，only support single class counting in MOT,
             and the video should be taken by a static camera.
         region_type (str): Area type for entrance counting or break in counting, 'horizontal'
-            and 'vertical' used when do entrance counting. 'custom' used when do break in counting. 
+            and 'vertical' used when do entrance counting. 'custom' used when do break in counting.
             Note that only support single-class MOT, and the video should be taken by a static camera.
         region_polygon (list): Clockwise point coords (x0,y0,x1,y1...) of polygon of area when
             do_break_in_counting. Note that only support single-class MOT and
@@ -259,6 +261,7 @@ class SDE_Detector(Detector):
         self.mtmct_dir = mtmct_dir
 
     def postprocess(self, inputs, result):
+        # 取出物件偵測的結果
         # postprocess output of predictor
         keep_idx = result['boxes'][:, 1] > self.threshold
         result['boxes'] = result['boxes'][keep_idx]
@@ -270,6 +273,13 @@ class SDE_Detector(Detector):
         return result
 
     def reidprocess(self, det_results, repeats=1):
+        """REID 預測 得到人的feature
+
+        OCSORTTracker 沒把feature拿去用
+        JDETracker 把資訊帶到輸出
+        DeepSORTTracker 有使用feature
+        """
+
         pred_dets = det_results['boxes']  # cls_id, score, x0, y0, x1, y1
         pred_xyxys = pred_dets[:, 2:6]
 
@@ -431,7 +441,7 @@ class SDE_Detector(Detector):
                     online_scores[cls_id].append(tscore)
                     if self.do_mtmct:
                         online_tlbrs[cls_id].append(t.tlbr)
-                        online_feats[cls_id].append(t.curr_feat)
+                        online_feats[cls_id].append(t.curr_feat)    # 把reid feature複製出來
 
             if self.do_mtmct:
                 assert self.num_classes == 1, 'MTMCT only support single class.'
@@ -471,6 +481,8 @@ class SDE_Detector(Detector):
                       seq_name=None,
                       reuse_det_result=False,
                       frame_count=0):
+        """預測一張圖片 並且做追蹤"""
+
         num_classes = self.num_classes
         image_list.sort()
         ids2names = self.pred_config.labels

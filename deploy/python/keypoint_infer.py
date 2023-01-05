@@ -48,6 +48,8 @@ KEYPOINT_SUPPORT_MODELS = {
 
 class KeyPointDetector(Detector):
     """
+    骨架偵測
+
     Args:
         model_dir (str): root path of model.pdiparams, model.pdmodel and infer_cfg.yml
         device (str): Choose the device you want to run, it can be: CPU/GPU/XPU, default is CPU
@@ -113,6 +115,8 @@ class KeyPointDetector(Detector):
         return rect_images, new_rects, org_rects
 
     def postprocess(self, inputs, result):
+        """骨架偵測後處理 再區分bottom up與top down的後處理"""
+
         np_heatmap = result['heatmap']
         np_masks = result['masks']
         # postprocess output of predictor
@@ -145,7 +149,10 @@ class KeyPointDetector(Detector):
                 self.pred_config.arch, KEYPOINT_SUPPORT_MODELS))
 
     def predict(self, repeats=1):
-        '''
+        '''進行預測 預測後將資料複製到GPU
+
+        bottomup模型多出三個output
+
         Args:
             repeats (int): repeat number for prediction
         Returns:
@@ -162,6 +169,7 @@ class KeyPointDetector(Detector):
             heatmap_tensor = self.predictor.get_output_handle(output_names[0])
             np_heatmap = heatmap_tensor.copy_to_cpu()
             if self.pred_config.tagmap:
+                # bottomup模型多出三個output
                 masks_tensor = self.predictor.get_output_handle(output_names[1])
                 heat_k = self.predictor.get_output_handle(output_names[2])
                 inds_k = self.predictor.get_output_handle(output_names[3])
@@ -177,6 +185,8 @@ class KeyPointDetector(Detector):
                       run_benchmark=False,
                       repeats=1,
                       visual=True):
+        """對每個物件框做骨架偵測"""
+
         results = []
         batch_loop_cnt = math.ceil(float(len(image_list)) / self.batch_size)
         for i in range(batch_loop_cnt):
@@ -297,7 +307,9 @@ def create_inputs(imgs, im_info):
 
 
 class PredictConfig_KeyPoint():
-    """set config of preprocess, postprocess and visualize
+    """讀取infer_cfg.yml 讀取裏面的參數設定
+
+    set config of preprocess, postprocess and visualize
     Args:
         model_dir (str): root path of model.yml
     """
@@ -322,7 +334,7 @@ class PredictConfig_KeyPoint():
     def check_model(self, yml_conf):
         """
         Raises:
-            ValueError: loaded model not in supported model type 
+            ValueError: loaded model not in supported model type
         """
         for support_model in KEYPOINT_SUPPORT_MODELS:
             if support_model in yml_conf['arch']:

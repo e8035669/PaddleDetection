@@ -39,7 +39,10 @@ from PIL import Image, ImageDraw, ImageFont
 
 
 class AttrDetector(Detector):
-    """
+    """做CNN多分類模型
+
+    這邊範例是用行人屬性辨識, 一張圖可以得到多個class(屬性)的結果
+
     Args:
         model_dir (str): root path of model.pdiparams, model.pdmodel and infer_cfg.yml
         device (str): Choose the device you want to run, it can be: CPU/GPU/XPU, default is CPU
@@ -86,6 +89,8 @@ class AttrDetector(Detector):
 
     @classmethod
     def init_with_cfg(cls, args, cfg):
+        """從config檔及命令列參數去建構這個物件"""
+
         return cls(model_dir=cfg['model_dir'],
                    batch_size=cfg['batch_size'],
                    device=args.device,
@@ -98,9 +103,13 @@ class AttrDetector(Detector):
                    enable_mkldnn=args.enable_mkldnn)
 
     def get_label(self):
+        """沒有地方用到此function"""
+
         return self.pred_config.labels
 
     def postprocess(self, inputs, result):
+        """把output取出, 26個class各有不同屬性含義, 在這邊解讀, 輸出結果爲字串"""
+
         # postprocess output of predictor
         im_results = result['output']
 
@@ -113,8 +122,8 @@ class AttrDetector(Detector):
             'LowerStripe', 'LowerPattern', 'LongCoat', 'Trousers', 'Shorts',
             'Skirt&Dress'
         ]
-        glasses_threshold = 0.3
-        hold_threshold = 0.6
+        glasses_threshold = 0.3 # 眼鏡屬性有不同的threshold
+        hold_threshold = 0.6    # 拿著東西的屬性有不同的threshold
         batch_res = []
         for res in im_results:
             res = res.tolist()
@@ -183,7 +192,8 @@ class AttrDetector(Detector):
         return result
 
     def predict(self, repeats=1):
-        '''
+        '''讓模型預測, 再把結果取出放到cpu memory中
+
         Args:
             repeats (int): repeats number for prediction
         Returns:
@@ -206,6 +216,8 @@ class AttrDetector(Detector):
                       run_benchmark=False,
                       repeats=1,
                       visual=True):
+        """預測一張圖片 做preprocess predict postprocess"""
+
         batch_loop_cnt = math.ceil(float(len(image_list)) / self.batch_size)
         results = []
         for i in range(batch_loop_cnt):
@@ -261,10 +273,11 @@ class AttrDetector(Detector):
             if visual:
                 print('Test iter {}'.format(i))
 
-        results = self.merge_batch_result(results)
+        results = self.merge_batch_result(results)  # 把每個dict裏面的output取出 放在一起
         return results
 
     def merge_batch_result(self, batch_result):
+        """每個result都是一個dict 裏面有output的key 這邊把這些key的value給合併"""
         if len(batch_result) == 1:
             return batch_result[0]
         res_key = batch_result[0].keys()

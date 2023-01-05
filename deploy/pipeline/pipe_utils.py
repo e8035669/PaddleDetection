@@ -25,6 +25,8 @@ from python.keypoint_preprocess import EvalAffine, TopDownEvalAffine, expand_cro
 
 
 class Times(object):
+    """計時器 可以計算start到end之間經過的時間"""
+
     def __init__(self):
         self.time = 0.
         # start time
@@ -51,7 +53,9 @@ class Times(object):
         return round(self.time, 4)
 
 
-class PipeTimer(Times):
+class PipeTimer(Times):     # 這項繼承是多餘的
+    """擁有多個Times物件, 爲pipeline的每個模組進行計時"""
+
     def __init__(self):
         super(PipeTimer, self).__init__()
         self.total_time = Times()
@@ -128,6 +132,8 @@ class PipeTimer(Times):
 
 
 class PushStream(object):
+    """可以把辨識的結果推送到rtsp串流"""
+
     def __init__(self, pushurl="rtsp://127.0.0.1:8554/"):
         self.command = ""
         # 自行设置
@@ -139,11 +145,14 @@ class PushStream(object):
             'bgr24', '-s', "{}x{}".format(width, height), '-r', str(fps), '-i',
             '-', '-pix_fmt', 'yuv420p', '-f', 'rtsp', self.pushurl
         ]
-        self.pipe = sp.Popen(self.command, stdin=sp.PIPE)
+        self.pipe = sp.Popen(self.command, stdin=sp.PIPE)   
+        # 在__init__以外的地方定義attribute 是不好的做法
+        # Popen物件需要用Context Manager管理 使用後必須關閉資源
 
 
 def get_test_images(infer_dir, infer_img):
-    """
+    """取得資料夾中的所有圖片
+
     Get image path list in TEST mode
     """
     assert infer_img is not None or infer_dir is not None, \
@@ -174,6 +183,8 @@ def get_test_images(infer_dir, infer_img):
 
 
 def crop_image_with_det(batch_input, det_res, thresh=0.3):
+    """用物件偵測的結果裁切出圖片, 並且用confidence過濾"""
+
     boxes = det_res['boxes']
     score = det_res['boxes'][:, 1]
     boxes_num = det_res['boxes_num']
@@ -196,6 +207,8 @@ def crop_image_with_det(batch_input, det_res, thresh=0.3):
 
 
 def normal_crop(image, rect):
+    """用物件偵測結果裁切一張圖片, 長寬範圍不調整"""
+
     imgh, imgw, c = image.shape
     label, conf, xmin, ymin, xmax, ymax = [int(x) for x in rect.tolist()]
     org_rect = [xmin, ymin, xmax, ymax]
@@ -209,6 +222,8 @@ def normal_crop(image, rect):
 
 
 def crop_image_with_mot(input, mot_res, expand=True):
+    """用物件追蹤的結果裁切出圖片, 可選擇是否要調大長寬範圍"""
+
     res = mot_res['boxes']
     crop_res = []
     new_bboxes = []
@@ -226,6 +241,8 @@ def crop_image_with_mot(input, mot_res, expand=True):
 
 
 def parse_mot_res(input):
+    """解析物件追蹤出來的結果, 改成(id, class, score, xmin, ymin, xmax, ymax)的格式"""
+
     mot_res = []
     boxes, scores, ids = input[0]
     for box, score, i in zip(boxes[0], scores[0], ids[0]):
@@ -236,7 +253,11 @@ def parse_mot_res(input):
 
 
 def refine_keypoint_coordinary(kpts, bbox, coord_size):
-    """
+    """把骨架的結果座標點轉換成基於原本分類模型訓練時的座標空間
+
+    分類模型當初是用[384, 512]的圖片大小的骨架去訓練的，骨架點的座標在這範圍內
+    所以預測時也要把人的骨架的座標縮放到384*512的範圍
+
         This function is used to adjust coordinate values to a fixed scale.
     """
     tl = bbox[:, 0:2]
@@ -250,12 +271,14 @@ def refine_keypoint_coordinary(kpts, bbox, coord_size):
 
 
 def parse_mot_keypoint(input, coord_size):
+    """解析所有座標點, 轉成基於模型訓練時定義的座標空間"""
+
     parsed_skeleton_with_mot = {}
     ids = []
     skeleton = []
     for tracker_id, kpt_seq in input:
         ids.append(tracker_id)
-        kpts = np.array(kpt_seq.kpts, dtype=np.float32)[:, :, :2]
+        kpts = np.array(kpt_seq.kpts, dtype=np.float32)[:, :, :2]   # 取出(x, y, conf)中的(x,y)
         kpts = np.expand_dims(np.transpose(kpts, [2, 0, 1]),
                               -1)  #T, K, C -> C, T, K, 1
         bbox = np.array(kpt_seq.bboxes, dtype=np.float32)

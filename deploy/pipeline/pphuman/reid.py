@@ -92,6 +92,8 @@ class ReID(object):
         return PredictConfig(model_dir)
 
     def check_img_quality(self, crop, bbox, xyxy):
+        """???"""
+
         if crop is None:
             return None
         #eclipse
@@ -123,6 +125,8 @@ class ReID(object):
                                                                 eclipse_weight)
 
     def normal_crop(self, image, rect):
+        """根據bounding box裁切照片"""
+
         imgh, imgw, c = image.shape
         label, conf, xmin, ymin, xmax, ymax = [int(x) for x in rect.tolist()]
         xmin = max(0, xmin)
@@ -135,6 +139,8 @@ class ReID(object):
         return image[ymin:ymax, xmin:xmax, :]
 
     def crop_image_with_mot(self, image, mot_res):
+        """截取影像中每個人的照片"""
+
         res = mot_res['boxes']
         crop_res = []
         img_quality = []
@@ -153,6 +159,7 @@ class ReID(object):
                    imgs,
                    mean=[0.485, 0.456, 0.406],
                    std=[0.229, 0.224, 0.225]):
+        """前處理 把這個batch的所有圖片 做normalize及轉成BCHW順序"""
         im_batch = []
         for img in imgs:
             img = cv2.resize(img, self.input_wh)
@@ -165,6 +172,8 @@ class ReID(object):
         return inputs
 
     def predict(self, crops, repeats=1, add_timer=True, seq_name=''):
+        """把截取出來的圖片 丟進模型進行預測 得到feature回傳"""
+
         # preprocess
         if add_timer:
             self.det_times.preprocess_time_s.start()
@@ -194,6 +203,8 @@ class ReID(object):
         return pred_embs
 
     def predict_batch(self, imgs, batch_size=4):
+        """人的數量如果太多 將拆成多個batch進行預測 最後把所有feature儲存"""
+
         batch_feat = []
         for b in range(0, len(imgs), batch_size):
             b_end = min(len(imgs), b + batch_size)

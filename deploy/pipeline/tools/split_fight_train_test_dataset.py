@@ -1,3 +1,5 @@
+"""應該是幫打架資料集區分train test使用"""
+
 import os
 import glob
 import random

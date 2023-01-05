@@ -67,7 +67,8 @@ def bench_log(detector, img_list, model_info, batch_size=1, name=None):
 
 
 class Detector(object):
-    """
+    """做YOLO物件辨識的class
+
     Args:
         pred_config (object): config of model, defined by `Config(model_dir)`
         model_dir (str): root path of model.pdiparams, model.pdmodel and infer_cfg.yml
@@ -84,7 +85,7 @@ class Detector(object):
         enable_mkldnn_bfloat16 (bool): whether to turn on mkldnn bfloat16
         output_dir (str): The path of output
         threshold (float): The threshold of score for visualization
-        delete_shuffle_pass (bool): whether to remove shuffle_channel_detect_pass in TensorRT. 
+        delete_shuffle_pass (bool): whether to remove shuffle_channel_detect_pass in TensorRT.
                                     Used by action model.
     """
 
@@ -130,6 +131,8 @@ class Detector(object):
         return PredictConfig(model_dir)
 
     def preprocess(self, image_list):
+        """前處理 讀取infer_cfg.yml裏面的前處理資訊來執行 再把資料複製到GPU"""
+
         preprocess_ops = []
         for op_info in self.pred_config.preprocess_infos:
             new_op_info = op_info.copy()
@@ -154,6 +157,7 @@ class Detector(object):
         return inputs
 
     def postprocess(self, inputs, result):
+        """後處理 只有過濾掉None"""
         # postprocess output of predictor
         np_boxes_num = result['boxes_num']
         assert isinstance(np_boxes_num, np.ndarray), \
@@ -163,6 +167,8 @@ class Detector(object):
         return result
 
     def filter_box(self, result, threshold):
+        """以confidence過濾boundingbox"""
+
         np_boxes_num = result['boxes_num']
         boxes = result['boxes']
         start_idx = 0
@@ -182,7 +188,7 @@ class Detector(object):
         return filter_res
 
     def predict(self, repeats=1):
-        '''
+        '''執行預測, 然後把資料複製回CPU
         Args:
             repeats (int): repeats number for prediction
         Returns:
@@ -356,6 +362,8 @@ class Detector(object):
                       repeats=1,
                       visual=True,
                       save_results=False):
+        """預測一張照片"""
+
         batch_loop_cnt = math.ceil(float(len(image_list)) / self.batch_size)
         results = []
         for i in range(batch_loop_cnt):
@@ -387,17 +395,17 @@ class Detector(object):
                 self.gpu_mem += gm
                 self.gpu_util += gu
             else:
-                # preprocess
+                # preprocess    前處理
                 self.det_times.preprocess_time_s.start()
                 inputs = self.preprocess(batch_image_list)
                 self.det_times.preprocess_time_s.end()
 
-                # model prediction
+                # model prediction 執行預測
                 self.det_times.inference_time_s.start()
                 result = self.predict()
                 self.det_times.inference_time_s.end()
 
-                # postprocess
+                # postprocess   後處理
                 self.det_times.postprocess_time_s.start()
                 result = self.postprocess(inputs, result)
                 self.det_times.postprocess_time_s.end()
@@ -531,11 +539,11 @@ class DetectorSOLOv2(Detector):
         trt_calib_mode (bool): If the model is produced by TRT offline quantitative
             calibration, trt_calib_mode need to set True
         cpu_threads (int): cpu threads
-        enable_mkldnn (bool): whether to open MKLDNN 
+        enable_mkldnn (bool): whether to open MKLDNN
         enable_mkldnn_bfloat16 (bool): Whether to turn on mkldnn bfloat16
         output_dir (str): The path of output
         threshold (float): The threshold of score for visualization
-       
+
     """
 
     def __init__(
@@ -762,7 +770,7 @@ class PredictConfig():
     def check_model(self, yml_conf):
         """
         Raises:
-            ValueError: loaded model not in supported model type 
+            ValueError: loaded model not in supported model type
         """
         for support_model in SUPPORT_MODELS:
             if support_model in yml_conf['arch']:
@@ -795,7 +803,9 @@ def load_predictor(model_dir,
                    enable_mkldnn_bfloat16=False,
                    delete_shuffle_pass=False,
                    tuned_trt_shape_file="shape_range_info.pbtxt"):
-    """set AnalysisConfig, generate AnalysisPredictor
+    """讀取模型檔案
+
+    set AnalysisConfig, generate AnalysisPredictor
     Args:
         model_dir (str): root path of __model__ and __params__
         device (str): Choose the device you want to run, it can be: CPU/GPU/XPU, default is CPU
@@ -806,7 +816,7 @@ def load_predictor(model_dir,
         trt_opt_shape (int): opt shape for dynamic shape in trt
         trt_calib_mode (bool): If the model is produced by TRT offline quantitative
             calibration, trt_calib_mode need to set True
-        delete_shuffle_pass (bool): whether to remove shuffle_channel_detect_pass in TensorRT. 
+        delete_shuffle_pass (bool): whether to remove shuffle_channel_detect_pass in TensorRT.
                                     Used by action model.
     Returns:
         predictor (PaddlePredictor): AnalysisPredictor

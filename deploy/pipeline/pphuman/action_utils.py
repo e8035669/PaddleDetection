@@ -14,6 +14,8 @@
 
 
 class KeyPointSequence(object):
+    """儲存keypoint和bounding box"""
+
     def __init__(self, max_size=100):
         self.frames = 0
         self.kpts = []
@@ -30,9 +32,11 @@ class KeyPointSequence(object):
 
 
 class KeyPointBuff(object):
+    """有新的追蹤id就會建立一個KeyPointSequence, 去儲存他的預測結果"""
+
     def __init__(self, max_size=100):
         self.flag_track_interrupt = False
-        self.keypoint_saver = dict()
+        self.keypoint_saver = dict()    # type: dict[int, KeyPointSequence]
         self.max_size = max_size
         self.id_to_pop = set()
         self.flag_to_pop = False
@@ -68,7 +72,7 @@ class KeyPointBuff(object):
 
     def get_collected_keypoint(self):
         """
-            Output (List): List of keypoint results for Skeletonbased Recognition task, where 
+            Output (List): List of keypoint results for Skeletonbased Recognition task, where
                            the format of each element is [tracker_id, KeyPointSequence of tracker_id]
         """
         output = []
@@ -81,6 +85,8 @@ class KeyPointBuff(object):
 
 
 class ActionVisualHelper(object):
+    """用來暫存每位追蹤id的辨識結果 要給畫圖用的"""
+
     def __init__(self, frame_life=20):
         self.frame_life = frame_life
         self.action_history = {}
@@ -107,6 +113,8 @@ class ActionVisualHelper(object):
             if mot_id in self.action_history:
                 if int(action_res["class"]) != 0 and int(self.action_history[
                         mot_id]["class"]) == 0:
+                    # 這次class爲1 但歷史記錄爲0 就略過 讓class 0的類別可以保留一段時間
+                    # 之前提過 class 0 is positive, class 1 is negative
                     continue
             action_info = self.action_history.get(mot_id, {})
             action_info["class"] = action_res["class"]

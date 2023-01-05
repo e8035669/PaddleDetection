@@ -24,7 +24,8 @@ import copy
 import threading
 import queue
 import time
-from collections import Sequence, defaultdict
+from collections import defaultdict
+from collections.abc import Sequence
 from datacollector import DataCollector, Result
 
 # add deploy path of PaddleDetection to sys.path
@@ -96,11 +97,12 @@ class Pipeline(object):
 
     def _parse_input(self, image_file, image_dir, video_file, video_dir,
                      camera_id, rtsp):
+        """pipeline.py可以接受影片或圖片,這邊挑選使用者輸入的資訊"""
 
         # parse input as is_video and multi_camera
 
         if image_file is not None or image_dir is not None:
-            input = get_test_images(image_dir, image_file)
+            input = get_test_images(image_dir, image_file)  # 取得資料夾中的所有圖片
             self.is_video = False
             self.multi_camera = False
 
@@ -145,6 +147,13 @@ class Pipeline(object):
         return input
 
     def run_multithreads(self):
+        """需要的話, 用多執行緒分別處理各個輸入影片
+
+        若有多個輸入, 每個輸入啓動一個thread去執行, 一個thread處理一個PipePredictor
+        只有單個輸入, 就不需要開thread了
+
+        所有輸入都預測過後, 最後做MTMCT多鏡頭的物件追蹤
+        """
         if self.multi_camera:
             multi_res = []
             threads = []
@@ -193,8 +202,8 @@ class Pipeline(object):
 
 
 def get_model_dir(cfg):
-    """ 
-        Auto download inference model if the model_path is a url link. 
+    """
+        Auto download inference model if the model_path is a url link.
         Otherwise it will use the model_path directly.
     """
     for key in cfg.keys():
@@ -236,13 +245,13 @@ def get_model_dir(cfg):
 class PipePredictor(object):
     """
     Predictor in single camera
-    
-    The pipeline for image input: 
+
+    The pipeline for image input:
 
         1. Detection
         2. Detection -> Attribute
 
-    The pipeline for video input: 
+    The pipeline for video input:
 
         1. Tracking
         2. Tracking -> Attribute
@@ -253,7 +262,7 @@ class PipePredictor(object):
         args (argparse.Namespace): arguments in pipeline, which contains environment and runtime settings
         cfg (dict): config of models in pipeline
         is_video (bool): whether the input is video, default as False
-        multi_camera (bool): whether to use multi camera in pipeline, 
+        multi_camera (bool): whether to use multi camera in pipeline,
             default as False
     """
 
@@ -375,7 +384,7 @@ class PipePredictor(object):
             attr_cfg = self.cfg['ATTR']
             basemode = self.basemode['ATTR']
             self.modebase[basemode] = True
-            self.attr_predictor = AttrDetector.init_with_cfg(args, attr_cfg)
+            self.attr_predictor = AttrDetector.init_with_cfg(args, attr_cfg)    # 行人屬性辨識
 
         if self.with_vehicle_attr:
             vehicleattr_cfg = self.cfg['VEHICLE_ATTR']
@@ -397,6 +406,7 @@ class PipePredictor(object):
                 laneseg_cfg['lane_seg_config'], laneseg_cfg['model_dir'])
 
         if not is_video:
+            # 輸入爲照片
 
             det_cfg = self.cfg['DET']
             model_dir = det_cfg['model_dir']
@@ -404,9 +414,11 @@ class PipePredictor(object):
             self.det_predictor = Detector(
                 model_dir, args.device, args.run_mode, batch_size,
                 args.trt_min_shape, args.trt_max_shape, args.trt_opt_shape,
-                args.trt_calib_mode, args.cpu_threads, args.enable_mkldnn)
+                args.trt_calib_mode, args.cpu_threads, args.enable_mkldnn)      # 讀取YOLO模型，只做物件辨識
         else:
+            # 輸入爲影片
             if self.with_idbased_detaction:
+                # 在物件框中再做另一個物件辨識
                 idbased_detaction_cfg = self.cfg['ID_BASED_DETACTION']
                 basemode = self.basemode['ID_BASED_DETACTION']
                 self.modebase[basemode] = True
@@ -416,6 +428,7 @@ class PipePredictor(object):
                 self.det_action_visual_helper = ActionVisualHelper(1)
 
             if self.with_idbased_clsaction:
+                # 在物件框中再做分類模型預測
                 idbased_clsaction_cfg = self.cfg['ID_BASED_CLSACTION']
                 basemode = self.basemode['ID_BASED_CLSACTION']
                 self.modebase[basemode] = True
@@ -425,6 +438,7 @@ class PipePredictor(object):
                 self.cls_action_visual_helper = ActionVisualHelper(1)
 
             if self.with_skeleton_action:
+                # 在物件框中做骨架偵測 + 基於有時間序列的骨架的行爲辨識
                 skeleton_action_cfg = self.cfg['SKELETON_ACTION']
                 display_frames = skeleton_action_cfg['display_frames']
                 self.coord_size = skeleton_action_cfg['coord_size']
@@ -462,6 +476,7 @@ class PipePredictor(object):
                 self.modebase[basemode] = True
 
             if self.with_mtmct:
+                # 多影片或攝影機，進行REID
                 reid_cfg = self.cfg['REID']
                 basemode = self.basemode['REID']
                 self.modebase[basemode] = True
@@ -476,6 +491,7 @@ class PipePredictor(object):
 
             if self.with_mot or self.modebase["idbased"] or self.modebase[
                     "skeletonbased"]:
+                # 輸入是影片，載入YOLO模型後，做物件辨識及物件追蹤
                 mot_cfg = self.cfg['MOT']
                 model_dir = mot_cfg['model_dir']
                 tracker_config = mot_cfg['tracker_config']
@@ -504,6 +520,7 @@ class PipePredictor(object):
                     region_polygon=self.region_polygon)
 
             if self.with_video_action:
+                # 輸入爲影片，做輸入爲影片片段的行爲辨識
                 video_action_cfg = self.cfg['VIDEO_ACTION']
                 basemode = self.basemode['VIDEO_ACTION']
                 self.modebase[basemode] = True
@@ -522,9 +539,16 @@ class PipePredictor(object):
             self.file_name = None
 
     def get_result(self):
+        """取得所有frame的辨識結果"""
+
         return self.collector.get_res()
 
     def run(self, input, thread_idx=0):
+        """執行這個PipePredictor
+
+        將整部影片跑完或照片跑完才會return
+        """
+
         if self.is_video:
             self.predict_video(input, thread_idx=thread_idx)
         else:
@@ -549,16 +573,16 @@ class PipePredictor(object):
                 self.pipe_timer.module_time['det'].start()
             # det output format: class, score, xmin, ymin, xmax, ymax
             det_res = self.det_predictor.predict_image(
-                batch_input, visual=False)
+                batch_input, visual=False)      # 做物件偵測
             det_res = self.det_predictor.filter_box(det_res,
-                                                    self.cfg['crop_thresh'])
+                                                    self.cfg['crop_thresh'])    # 以confidence過濾boundingbox
             if i > self.warmup_frame:
                 self.pipe_timer.module_time['det'].end()
                 self.pipe_timer.track_num += len(det_res['boxes'])
             self.pipeline_res.update(det_res, 'det')
 
             if self.with_human_attr:
-                crop_inputs = crop_image_with_det(batch_input, det_res)
+                crop_inputs = crop_image_with_det(batch_input, det_res) # 用物件偵測的結果裁切出物件照片
                 attr_res_list = []
 
                 if i > self.warmup_frame:
@@ -566,7 +590,7 @@ class PipePredictor(object):
 
                 for crop_input in crop_inputs:
                     attr_res = self.attr_predictor.predict_image(
-                        crop_input, visual=False)
+                        crop_input, visual=False)       # 做行人屬性辨識
                     attr_res_list.extend(attr_res['output'])
 
                 if i > self.warmup_frame:
@@ -630,7 +654,7 @@ class PipePredictor(object):
                 self.pipe_timer.total_time.end()
 
             if self.cfg['visual']:
-                self.visualize_image(batch_file, batch_input, self.pipeline_res)
+                self.visualize_image(batch_file, batch_input, self.pipeline_res)    # 繪製影像並儲存
 
     def capturevideo(self, capture, queue):
         frame_id = 0
@@ -658,12 +682,14 @@ class PipePredictor(object):
         print("video fps: %d, frame_count: %d" % (fps, frame_count))
 
         if len(self.pushurl) > 0:
+            # 要把預測結果推送到串流
             video_out_name = 'output' if self.file_name is None else self.file_name
             pushurl = os.path.join(self.pushurl, video_out_name)
             print("the result will push stream to url:{}".format(pushurl))
             pushstream = PushStream(pushurl)
             pushstream.initcmd(fps, width, height)
         elif self.cfg['visual']:
+            # 或者是輸出成影片
             video_out_name = 'output' if (
                 self.file_name is None or
                 type(self.file_name) == int) else self.file_name
@@ -718,18 +744,22 @@ class PipePredictor(object):
             scale = ShortSizeScale(short_size)
 
         object_in_region_info = {
-        }  # store info for vehicle parking in region       
+        }  # store info for vehicle parking in region
         illegal_parking_dict = None
         cars_count = 0
         retrograde_traj_len = 0
         framequeue = queue.Queue(10)
 
         thread = threading.Thread(
-            target=self.capturevideo, args=(capture, framequeue))
+            target=self.capturevideo, args=(capture, framequeue))   # 把IO量大的拿取影像的工作丟給另一個thread
         thread.start()
         time.sleep(1)
 
         while (not framequeue.empty()):
+            # 潛在bug，如果串流影片讀取太久，速度慢於預測速度，while迴圈會提早離開
+            # while迴圈之後沒將thread join
+            # VideoCapture沒有執行release, 硬體資源沒有釋放
+            # 有可能function都return了 前面開的thread還在跑
             if frame_id % 10 == 0:
                 print('Thread: {}; frame id: {}'.format(thread_idx, frame_id))
 
@@ -779,7 +809,7 @@ class PipePredictor(object):
                     out_id_list,
                     prev_center,
                     records,
-                    ids2names=self.mot_predictor.pred_config.labels)
+                    ids2names=self.mot_predictor.pred_config.labels)    # 人流統計
                 records = statistic['records']
 
                 if self.illegal_parking_time != -1:
@@ -815,7 +845,7 @@ class PipePredictor(object):
 
                 self.pipeline_res.update(mot_res, 'mot')
                 crop_input, new_bboxes, ori_bboxes = crop_image_with_mot(
-                    frame_rgb, mot_res)
+                    frame_rgb, mot_res)         # 用物件框裁切每個物件的照片
 
                 if self.with_vehicleplate and frame_id % 10 == 0:
                     if frame_id > self.warmup_frame:
@@ -834,7 +864,7 @@ class PipePredictor(object):
                     if frame_id > self.warmup_frame:
                         self.pipe_timer.module_time['attr'].start()
                     attr_res = self.attr_predictor.predict_image(
-                        crop_input, visual=False)
+                        crop_input, visual=False)               # 行人屬性辨識
                     if frame_id > self.warmup_frame:
                         self.pipe_timer.module_time['attr'].end()
                     self.pipeline_res.update(attr_res, 'attr')
@@ -885,7 +915,7 @@ class PipePredictor(object):
                     if frame_id > self.warmup_frame:
                         self.pipe_timer.module_time['det_action'].start()
                     det_action_res = self.det_action_predictor.predict(
-                        crop_input, mot_res)
+                        crop_input, mot_res)                # 對每個物件框再做另一個物件辨識 (抽菸偵測)
                     if frame_id > self.warmup_frame:
                         self.pipe_timer.module_time['det_action'].end()
                     self.pipeline_res.update(det_action_res, 'det_action')
@@ -897,7 +927,7 @@ class PipePredictor(object):
                     if frame_id > self.warmup_frame:
                         self.pipe_timer.module_time['cls_action'].start()
                     cls_action_res = self.cls_action_predictor.predict_with_mot(
-                        crop_input, mot_res)
+                        crop_input, mot_res)                # 對每個物件框中再做另一個分類預測 (講電話辨識)
                     if frame_id > self.warmup_frame:
                         self.pipe_timer.module_time['cls_action'].end()
                     self.pipeline_res.update(cls_action_res, 'cls_action')
@@ -909,9 +939,13 @@ class PipePredictor(object):
                     if frame_id > self.warmup_frame:
                         self.pipe_timer.module_time['kpt'].start()
                     kpt_pred = self.kpt_predictor.predict_image(
-                        crop_input, visual=False)
+                        crop_input, visual=False)           # 對每個物件框做骨架偵測
+                    # kpt_pred['keypoint']: [B x 17 x 3], [batch, 17, (x, y, conf)]
+                    # kpt_pred['score']: [B x 1]
+                    # print('kpt_pred', [(k, v.shape) for k, v in kpt_pred.items()])
+                    # print('kpt_pred', [(k, v.tolist()) for k, v in kpt_pred.items()])
                     keypoint_vector, score_vector = translate_to_ori_images(
-                        kpt_pred, np.array(new_bboxes))
+                        kpt_pred, np.array(new_bboxes))     # 將物件框轉換回原圖座標
                     kpt_res = {}
                     kpt_res['keypoint'] = [
                         keypoint_vector.tolist(), score_vector.tolist()
@@ -922,9 +956,9 @@ class PipePredictor(object):
 
                     self.pipeline_res.update(kpt_res, 'kpt')
 
-                    self.kpt_buff.update(kpt_res, mot_res)  # collect kpt output
+                    self.kpt_buff.update(kpt_res, mot_res)  # collect kpt output 蒐集每個frame的骨架點
                     state = self.kpt_buff.get_state(
-                    )  # whether frame num is enough or lost tracker
+                    )  # whether frame num is enough or lost tracker 檢查蒐集的骨架點是否足夠
 
                     skeleton_action_res = {}
                     if state:
@@ -932,11 +966,11 @@ class PipePredictor(object):
                             self.pipe_timer.module_time[
                                 'skeleton_action'].start()
                         collected_keypoint = self.kpt_buff.get_collected_keypoint(
-                        )  # reoragnize kpt output with ID
+                        )  # reoragnize kpt output with ID  取出已經累積的骨架點
                         skeleton_action_input = parse_mot_keypoint(
                             collected_keypoint, self.coord_size)
                         skeleton_action_res = self.skeleton_action_predictor.predict_skeleton_with_mot(
-                            skeleton_action_input)
+                            skeleton_action_input)      # 用累積一段時間的骨架點 去預測 一個人的行爲分類 (跌倒辨識)
                         if frame_id > self.warmup_frame:
                             self.pipe_timer.module_time['skeleton_action'].end()
                         self.pipeline_res.update(skeleton_action_res,
@@ -948,10 +982,10 @@ class PipePredictor(object):
 
                 if self.with_mtmct and frame_id % 10 == 0:
                     crop_input, img_qualities, rects = self.reid_predictor.crop_image_with_mot(
-                        frame_rgb, mot_res)
+                        frame_rgb, mot_res)     # 裁切所有人的圖片 計算quality
                     if frame_id > self.warmup_frame:
                         self.pipe_timer.module_time['reid'].start()
-                    reid_res = self.reid_predictor.predict_batch(crop_input)
+                    reid_res = self.reid_predictor.predict_batch(crop_input)    # 執行REID 預測每個人 得到每個人feature
 
                     if frame_id > self.warmup_frame:
                         self.pipe_timer.module_time['reid'].end()
@@ -977,7 +1011,7 @@ class PipePredictor(object):
                 if frame_id > self.warmup_frame:
                     self.pipe_timer.module_time['video_action'].start()
 
-                # collect frames
+                # collect frames 蒐集每間隔時間的影像
                 if frame_id % sample_freq == 0:
                     # Scale image
                     scaled_img = scale(frame_rgb)
@@ -986,7 +1020,7 @@ class PipePredictor(object):
                 # the number of collected frames is enough to predict video action
                 if len(video_action_imgs) == frame_len:
                     classes, scores = self.video_action_predictor.predict(
-                        video_action_imgs)
+                        video_action_imgs)      # 累積一段影像後，執行影片分類(打架辨識)
                     if frame_id > self.warmup_frame:
                         self.pipe_timer.module_time['video_action'].end()
 
@@ -995,7 +1029,7 @@ class PipePredictor(object):
 
                     print("video_action_res:", video_action_res)
 
-                    video_action_imgs.clear()  # next clip
+                    video_action_imgs.clear()  # next clip  辨識完後清掉累積的影像
 
             if self.with_vehicle_retrograde:
                 # get the params
@@ -1016,7 +1050,7 @@ class PipePredictor(object):
                         frame_mot_res, max_len=frame_len)
                     retrograde_traj_len = retrograde_traj_len + 1
 
-                #the number of collected frames is enough to predict 
+                #the number of collected frames is enough to predict
                 if retrograde_traj_len == frame_len:
                     retrograde_mot_res = copy.deepcopy(
                         self.pipeline_res.get('mot'))
@@ -1060,7 +1094,7 @@ class PipePredictor(object):
 
                     retrograde_traj_len = 0
 
-            self.collector.append(frame_id, self.pipeline_res)
+            self.collector.append(frame_id, self.pipeline_res)  # 儲存這個frame預測的所有結果
 
             if frame_id > self.warmup_frame:
                 self.pipe_timer.img_num += 1
@@ -1074,10 +1108,12 @@ class PipePredictor(object):
                                           self.collector, frame_id, fps,
                                           entrance, records, center_traj,
                                           self.illegal_parking_time != -1,
-                                          illegal_parking_dict)  # visualize
+                                          illegal_parking_dict)  # visualize 繪製影像
                 if len(self.pushurl) > 0:
+                    # 推送到串流
                     pushstream.pipe.stdin.write(im.tobytes())
                 else:
+                    # 或是寫入影片檔案 或是顯示於GUI上
                     writer.write(im)
                     if self.file_name is None:  # use camera_id
                         cv2.imshow('Paddle-Pipeline', im)
@@ -1099,6 +1135,8 @@ class PipePredictor(object):
                         center_traj=None,
                         do_illegal_parking_recognition=False,
                         illegal_parking_dict=None):
+        """繪製辨識結果的影像 影片專用"""
+
         image = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
         mot_res = copy.deepcopy(result.get('mot'))
 
@@ -1240,6 +1278,8 @@ class PipePredictor(object):
         return image
 
     def visualize_image(self, im_files, images, result):
+        """繪製辨識結果的影像 照片專用"""
+
         start_idx, boxes_num_i = 0, 0
         det_res = result.get('det')
         human_attr_res = result.get('attr')

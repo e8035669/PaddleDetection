@@ -218,15 +218,19 @@ def get_dist_mat(x, y, func_name="euclidean"):
 
 
 def intracam_ignore(st_mask, cid_tids):
+    """檢查名字第二個字 是相機id 相同相機的話 相似度歸零"""
+
     count = len(cid_tids)
     for i in range(count):
         for j in range(count):
-            if cid_tids[i][1] == cid_tids[j][1]:
-                st_mask[i, j] = 0.
+            if cid_tids[i][1] == cid_tids[j][1]:    # 檢查名字第二個字 是相機id
+                st_mask[i, j] = 0.                  # 相同相機相似度歸零
     return st_mask
 
 
 def get_sim_matrix_new(cid_tid_dict, cid_tids):
+    """計算相似度矩陣"""
+
     # Note: camera independent get_sim_matrix function,
     # which is different from the one in camera_utils.py.
     count = len(cid_tids)
@@ -236,18 +240,20 @@ def get_sim_matrix_new(cid_tid_dict, cid_tids):
     g_arr = np.array(
         [cid_tid_dict[cid_tids[i]]['mean_feat'] for i in range(count)])
     #compute distmat
-    distmat = get_dist_mat(q_arr, g_arr, func_name="cosine")
+    distmat = get_dist_mat(q_arr, g_arr, func_name="cosine")    # 計算兩兩的cosine相似度
 
     #mask the element which belongs to same video
     st_mask = np.ones((count, count), dtype=np.float32)
     st_mask = intracam_ignore(st_mask, cid_tids)
 
     sim_matrix = distmat * st_mask
-    np.fill_diagonal(sim_matrix, 0.)
-    return 1. - sim_matrix
+    np.fill_diagonal(sim_matrix, 0.)    # 自己跟自己的相似度也歸零
+    return 1. - sim_matrix              # 0變成最相似 1變成最不相似
 
 
 def get_match(cluster_labels):
+    """製作list[list[index]]的陣列 把同一群的放一個list"""
+
     cluster_dict = dict()
     cluster = list()
     for i, l in enumerate(cluster_labels):
@@ -271,8 +277,9 @@ def get_cid_tid(cluster_labels, cid_tids):
 
 
 def get_labels(cid_tid_dict, cid_tids):
+    """計算相似度矩陣 並且取得分群結果 回傳新label"""
     #compute cost matrix between features
-    cost_matrix = get_sim_matrix_new(cid_tid_dict, cid_tids)
+    cost_matrix = get_sim_matrix_new(cid_tid_dict, cid_tids)    # 計算相似度矩陣
 
     #cluster all the features
     cluster1 = AgglomerativeClustering(
@@ -280,8 +287,8 @@ def get_labels(cid_tid_dict, cid_tids):
         distance_threshold=0.5,
         affinity='precomputed',
         linkage='complete')
-    cluster_labels1 = cluster1.fit_predict(cost_matrix)
-    labels = get_match(cluster_labels1)
+    cluster_labels1 = cluster1.fit_predict(cost_matrix)     # 做分群 距離小於0.5歸類同一群
+    labels = get_match(cluster_labels1)     # 製作list[list[index]] 把同一群放進一個list
 
     sub_cluster = get_cid_tid(labels, cid_tids)
     return labels
@@ -289,6 +296,7 @@ def get_labels(cid_tid_dict, cid_tids):
 
 def sub_cluster(cid_tid_dict):
     '''
+    做分群, 解析分群結果
     cid_tid_dict: all camera_id and track_id
     '''
     #get all keys
@@ -300,15 +308,17 @@ def sub_cluster(cid_tid_dict):
     #relabel every cluster groups
     new_clu = list()
     for c_list in clu:
-        new_clu.append([cid_tids[c] for c in c_list])
+        new_clu.append([cid_tids[c] for c in c_list])   # 製作list[list[cid_tid]]
     cid_tid_label = dict()
     for i, c_list in enumerate(new_clu):
         for c in c_list:
-            cid_tid_label[c] = i + 1
+            cid_tid_label[c] = i + 1                    # 爲每個人指定新label
     return cid_tid_label
 
 
 def distill_idfeat(mot_res):
+    """把這個人拍到的所有照片的feature拿去取平均"""
+
     qualities_list = mot_res["qualities"]
     feature_list = mot_res["features"]
     rects = mot_res["rects"]
@@ -318,7 +328,7 @@ def distill_idfeat(mot_res):
     #filter rect less than 100*20
     for idx, rect in enumerate(rects):
         conf, xmin, ymin, xmax, ymax = rect[0]
-        if (xmax - xmin) * (ymax - ymin) and (xmax > xmin) > 2000:
+        if (xmax - xmin) * (ymax - ymin) and (xmax > xmin) > 2000:  # 看起來很奇怪的判斷條件 感覺沒做用
             qualities_new.append(qualities_list[idx])
             feature_new.append(feature_list[idx])
     #take all features if available rect is less than 2
@@ -327,6 +337,7 @@ def distill_idfeat(mot_res):
         feature_new = feature_list
 
     #if available frames number is more than 200, take one frame data per 20 frames
+    # 照片太多的話做取樣
     skipf = 1
     if len(qualities_new) > 20:
         skipf = 2
@@ -334,6 +345,7 @@ def distill_idfeat(mot_res):
     feature_skip = np.array(feature_new[::skipf])
 
     #sort features with image qualities, take the most trustworth features
+    # 挑出品質高的照片
     topk_argq = np.argsort(quality_skip)[::-1]
     if (quality_skip > 0.6).sum() > 1:
         topk_feat = feature_skip[topk_argq[quality_skip > 0.6]]
@@ -341,34 +353,38 @@ def distill_idfeat(mot_res):
         topk_feat = feature_skip[topk_argq]
 
     #get final features by mean or cluster, at most take five
-    mean_feat = np.mean(topk_feat[:5], axis=0)
+    mean_feat = np.mean(topk_feat[:5], axis=0)  # 把feature拿去取平均
     return mean_feat
 
 
 def res2dict(multi_res):
+    """把多個相機的所有追蹤人 整合成dict 並且把每個人的feature取平均"""
+
     cid_tid_dict = {}
     for cid, c_res in enumerate(multi_res):
         for tid, res in c_res.items():
-            key = "c" + str(cid) + "_t" + str(tid)
+            key = "c" + str(cid) + "_t" + str(tid)      # 幫每個人取一個名字
             if key not in cid_tid_dict:
                 if len(res["features"]) == 0:
                     continue
                 cid_tid_dict[key] = res
-                cid_tid_dict[key]['mean_feat'] = distill_idfeat(res)
+                cid_tid_dict[key]['mean_feat'] = distill_idfeat(res)    # 計算這個人的feature的平均
     return cid_tid_dict
 
 
 def mtmct_process(multi_res, captures, mtmct_vis=True, output_dir="output"):
-    cid_tid_dict = res2dict(multi_res)
+    """執行mtmct"""
+
+    cid_tid_dict = res2dict(multi_res)  # 取出所有相機的預測結果 轉成dict 把每個人的feature取平均
     if len(cid_tid_dict) == 0:
         print("no tracking result found, mtmct will be skiped.")
         return
-    map_tid = sub_cluster(cid_tid_dict)
+    map_tid = sub_cluster(cid_tid_dict) # 用分群重新給予label
 
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
     pred_mtmct_file = os.path.join(output_dir, 'mtmct_result.txt')
-    gen_restxt(pred_mtmct_file, map_tid, cid_tid_dict)
+    gen_restxt(pred_mtmct_file, map_tid, cid_tid_dict)  # 儲存mtmct的結果
 
     if mtmct_vis:
         camera_results, cid_tid_fid_res = get_mtmct_matching_results(

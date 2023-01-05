@@ -226,6 +226,8 @@ class TopDownEvalAffine(object):
 
 
 def expand_crop(images, rect, expand_ratio=0.3):
+    """用物件偵測結果裁切一張圖片, 且長寬範圍稍微加大"""
+
     imgh, imgw, c = images.shape
     label, conf, xmin, ymin, xmax, ymax = [int(x) for x in rect.tolist()]
     if label != 0:

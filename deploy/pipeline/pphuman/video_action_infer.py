@@ -21,7 +21,7 @@ import numpy as np
 import math
 import paddle
 import sys
-from collections import Sequence
+from collections.abc import Sequence
 import paddle.nn.functional as F
 
 # add deploy path of PaddleDetection to sys.path
@@ -41,7 +41,10 @@ def softmax(x):
 
 
 class VideoActionRecognizer(object):
-    """
+    """輸入爲影片，做輸入爲影片片段的行爲辨識
+
+    這邊的範例是打架偵測, 用一段影片做預測, 預測是否正在打架
+
     Args:
         model_dir (str): root path of model.pdiparams, model.pdmodel and infer_cfg.yml
         device (str): Choose the device you want to run, it can be: CPU/GPU/XPU, default is CPU
@@ -128,6 +131,8 @@ class VideoActionRecognizer(object):
 
     @classmethod
     def init_with_cfg(cls, args, cfg):
+        """用config檔和命令列參數來建立物件"""
+
         return cls(model_dir=cfg['model_dir'],
                    short_size=cfg['short_size'],
                    target_size=cfg['target_size'],
@@ -157,11 +162,12 @@ class VideoActionRecognizer(object):
         return self.recognize_times
 
     def predict(self, input):
-        '''
+        '''執行模型預測 做打架辨識
+
         Args:
             input (str) or (list): video file path or image data list
         Returns:
-            results (dict): 
+            results (dict):
         '''
 
         input_names = self.predictor.get_input_names()
@@ -182,14 +188,14 @@ class VideoActionRecognizer(object):
             inputs, axis=0).repeat(
                 self.batch_size, axis=0).copy()
 
-        input_tensor.copy_from_cpu(inputs)
+        input_tensor.copy_from_cpu(inputs)      # 複製到gpu中
 
         # model prediction
         self.recognize_times.inference_time_s.start()
         self.predictor.run()
         self.recognize_times.inference_time_s.end()
 
-        output = output_tensor.copy_to_cpu()
+        output = output_tensor.copy_to_cpu()    # 從gpu取出到cpu中
 
         # postprocess
         self.recognize_times.postprocess_time_s.start()
@@ -199,7 +205,7 @@ class VideoActionRecognizer(object):
         return classes, scores
 
     def preprocess_frames(self, frame_list):
-        """
+        """前處理操作 包含CenterCrop Normalization
         frame_list: list, frame list
         return: list
         """
@@ -221,7 +227,7 @@ class VideoActionRecognizer(object):
         return [res]
 
     def preprocess_video(self, input_file):
-        """
+        """從影片讀檔開始到前處理操作
         input_file: str, file path
         return: list
         """
@@ -244,6 +250,8 @@ class VideoActionRecognizer(object):
         return [res]
 
     def postprocess(self, output):
+        """做softmax和找出最大index"""
+
         output = output.flatten()  # numpy.ndarray
         output = softmax(output)
         classes = np.argpartition(output, -self.top_k)[-self.top_k:]

@@ -1,0 +1,158 @@
+@startuml
+!theme toy
+
+class PipePredictor {
+    collector: DataCollector
+    pipe_timer: PipeTimer
+    pipeline_res: Result
+
+    det_predictor: Detector
+    mot_predictor: SDE_Detector
+    attr_predictor: AttrDetector
+    det_action_predictor: DetActionRecognizer
+    cls_action_predictor: ClsActionRecognizer
+    skeleton_action_predictor: SkeletonActionRecognizer
+    kpt_predictor: KeyPointDetector
+    reid_predictor: ReID
+    video_action_predictor: VideoActionRecognizer
+
+    run()
+}
+
+class Pipeline {
+    is_video: bool
+    multi_camera: bool
+    predictor: PipePredictor | list[PipePredictor]
+    input: str | list[str]
+    run_multithreads()
+}
+
+class Times {
+    start()
+    end()
+    reset()
+    value()
+}
+
+class PipeTimer {
+    total_time: Times
+    module_time: dict[Times]
+    img_num: int
+    track_num: int
+}
+
+Pipeline "1" *-- "many" PipePredictor
+PipeTimer "1" *-- "many" Times
+PipePredictor "1" *-- "1" PipeTimer
+
+class DataCollector {
+    collector: dict[int, dict[str, list]]
+    append(frameid, Result)
+}
+
+class Result {
+    res_dict: dict[str, dict]
+    update(res, name)
+    get(name)
+}
+
+PipePredictor *-- DataCollector
+PipePredictor --> Result
+DataCollector --> Result
+
+class Detector {
+    preprocess()
+    predict()
+    postprocess()
+    predict_image()
+}
+
+PipePredictor *-- Detector
+
+class AttrDetector {
+    postprocess()
+    predict()
+    predict_image()
+}
+
+PipePredictor *-- AttrDetector
+Detector <|-- AttrDetector
+
+class SkeletonActionRecognizer {
+    predict()
+    predict_skeleton()
+    predict_skeleton_with_mot()
+    preprocess()
+    postprocess()
+}
+
+PipePredictor *-- SkeletonActionRecognizer
+Detector <|-- SkeletonActionRecognizer
+
+class DetActionRecognizer {
+    detector: Detector
+    postprocess()
+
+    predict()
+}
+
+PipePredictor *-- DetActionRecognizer
+DetActionRecognizer *-- Detector
+
+class ClsActionRecognizer {
+    postprocess()
+
+    predict_with_mot()
+}
+
+AttrDetector <|-- ClsActionRecognizer
+PipePredictor *-- ClsActionRecognizer
+
+class VideoActionRecognizer {
+    preprocess_frames()
+    postprocess()
+
+    predict()
+}
+
+PipePredictor *-- VideoActionRecognizer
+
+class KeyPointDetector {
+    predict()
+    postprocess()
+
+    predict_image()
+}
+
+Detector <|-- KeyPointDetector
+PipePredictor *-- KeyPointDetector
+
+package pptracking.python.mot_sde_infer {
+    class "Detector" as MotDetector {
+        preprocess()
+        postprocess()
+        predict()
+        predict_image()
+    }
+
+    class SDE_Detector {
+        tracker: DeepSORTTracker | JDETracker
+        postprocess()
+        reidprocess()
+        tracking()
+
+        predict_image()
+    }
+    MotDetector <|-- SDE_Detector
+    PipePredictor *-- SDE_Detector
+}
+
+class ReID {
+    crop_image_with_mot()
+    predict_batch()
+}
+
+PipePredictor *-- ReID
+
+
+@enduml

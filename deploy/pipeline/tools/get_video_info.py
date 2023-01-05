@@ -1,3 +1,9 @@
+"""讀影片 取一張圖片 在上面畫紅色的多邊形範圍 然後儲存這張圖片
+
+應該是爲了測試ROI範圍
+"""
+
+
 import os
 import sys
 import cv2
@@ -25,6 +31,8 @@ def argsparser():
 
 
 def get_video_info(video_file, region_polygon):
+    """讀影片 取一張圖片 在上面畫紅色的多邊形範圍 然後儲存這張圖片"""
+
     entrance = []
     assert len(region_polygon
                ) % 2 == 0, "region_polygon should be pairs of coords points."

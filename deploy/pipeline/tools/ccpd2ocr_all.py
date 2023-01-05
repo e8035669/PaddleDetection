@@ -1,3 +1,10 @@
+"""CCPD (Chinese City Parking Dataset, ECCV)
+
+中科大开源数据集CCPD
+
+数据集能够应用到车牌检测以及识别任务中，总的图片数量能够达到300K张图片
+"""
+
 import cv2
 import os
 import json

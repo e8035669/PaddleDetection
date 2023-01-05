@@ -2,6 +2,8 @@ import cv2
 
 
 def cut_video(video_path, frameToStart, frametoStop, saved_video_path):
+    """讀取影片 裁切出指定範圍 儲存成新影片"""
+
     cap = cv2.VideoCapture(video_path)
     FPS = cap.get(cv2.CAP_PROP_FPS)
 

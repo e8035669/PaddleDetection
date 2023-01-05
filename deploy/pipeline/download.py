@@ -67,11 +67,15 @@ def is_url(path):
 
 
 def parse_url(url):
+    """把ppdet://開頭的URI展開成真正的https網址"""
+
     url = url.replace("ppdet://", PPDET_WEIGHTS_DOWNLOAD_URL_PREFIX)
     return url
 
 
 def map_path(url, root_dir, path_depth=1):
+    """把URL網址轉換成下載後放在電腦裏解壓縮後的路徑"""
+
     # parse path after download to decompress under root_dir
     assert path_depth > 0, "path_depth should be a positive integer"
     dirname = url
@@ -86,6 +90,7 @@ def map_path(url, root_dir, path_depth=1):
 
 
 def _md5check(fullname, md5sum=None):
+    """做md5 checksum"""
     if md5sum is None:
         return True
 
@@ -109,6 +114,7 @@ def _download(url, path, md5sum=None):
     Download from url, save to path.
     url (str): download url
     path (str): download to given path
+    去網路上下載檔案
     """
     if not osp.exists(path):
         os.makedirs(path)
@@ -154,6 +160,7 @@ def _download(url, path, md5sum=None):
 
 
 def _download_dist(url, path, md5sum=None):
+    """去網路上下載檔案, 但如果是平行化執行環境的話 就只要其中一個人下載就行了"""
     env = os.environ
     if 'PADDLE_TRAINERS_NUM' in env and 'PADDLE_TRAINER_ID' in env:
         trainer_id = int(env['PADDLE_TRAINER_ID'])
@@ -211,6 +218,7 @@ def _move_and_merge_tree(src, dst):
 def _decompress(fname):
     """
     Decompress for zip and tar file
+    解壓縮檔案 解壓後刪除原本的壓縮檔
     """
 
     # For protecting decompressing interupted,
@@ -244,6 +252,7 @@ def _decompress(fname):
 
 
 def _decompress_dist(fname):
+    """解壓縮檔案 但如果是平行化執行的環境的話 就只要其中一個人下載就行了"""
     env = os.environ
     if 'PADDLE_TRAINERS_NUM' in env and 'PADDLE_TRAINER_ID' in env:
         trainer_id = int(env['PADDLE_TRAINER_ID'])
@@ -293,6 +302,7 @@ def get_path(url, root_dir=WEIGHTS_HOME, md5sum=None, check_exist=True):
 
     # For same zip file, decompressed directory name different
     # from zip file name, rename by following map
+    # 有壓縮檔解壓縮之後裏面的資料夾名稱跟壓縮檔不一樣...應該是歷史因素吧
     decompress_name_map = {"ppTSM_fight": "ppTSM", }
     for k, v in decompress_name_map.items():
         if fullpath.find(k) >= 0:
@@ -301,16 +311,16 @@ def get_path(url, root_dir=WEIGHTS_HOME, md5sum=None, check_exist=True):
     if osp.exists(fullpath) and check_exist:
         if not osp.isfile(fullpath) or \
                 _check_exist_file_md5(fullpath, md5sum, url):
-            return fullpath, True
+            return fullpath, True   # 檔案存在直接使用
         else:
             os.remove(fullpath)
 
-    fullname = _download_dist(url, root_dir, md5sum)
+    fullname = _download_dist(url, root_dir, md5sum)    # 下載檔案
 
     # new weights format which postfix is 'pdparams' not
     # need to decompress
     if osp.splitext(fullname)[-1] not in ['.pdparams', '.yml']:
-        _decompress_dist(fullname)
+        _decompress_dist(fullname)                      # 解壓縮檔案
 
     return fullpath, False
 
@@ -318,6 +328,7 @@ def get_path(url, root_dir=WEIGHTS_HOME, md5sum=None, check_exist=True):
 def get_weights_path(url):
     """Get weights path from WEIGHTS_HOME, if not exists,
     download it from url.
+    解析URL 嘗試尋找已下載的檔案 找不到就上網下載
     """
     url = parse_url(url)
     md5sum = None

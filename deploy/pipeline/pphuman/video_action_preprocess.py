@@ -20,7 +20,8 @@ import paddle
 
 
 class Sampler(object):
-    """
+    """對影片取樣
+
     Sample frames id.
     NOTE: Use PIL to read image here, has diff with CV2
     Args:
@@ -48,6 +49,8 @@ class Sampler(object):
         self.use_pil = use_pil
 
     def _get(self, frames_idx, results):
+        # 拿出影片中的frames_idx這些frame
+        
         data_format = results['format']
 
         if data_format == "frame":
@@ -56,7 +59,7 @@ class Sampler(object):
             for idx in frames_idx:
                 img = Image.open(
                     os.path.join(frame_dir, results['suffix'].format(
-                        idx))).convert('RGB')
+                        idx))).convert('RGB')                       # 誰又忘記import os
                 imgs.append(img)
 
         elif data_format == "video":
@@ -129,7 +132,8 @@ class Sampler(object):
         return clip_offsets
 
     def __call__(self, results):
-        """
+        """執行影片取樣
+
         Args:
             frames_len: length of frames.
         return:
@@ -207,7 +211,7 @@ class Sampler(object):
                 idx = 0
                 if not self.valid_mode:
                     if average_dur >= self.seg_len:
-                        idx = random.randint(0, average_dur - self.seg_len)
+                        idx = random.randint(0, average_dur - self.seg_len)     # 誰又忘記import random
                         idx += i * average_dur
                     elif average_dur >= 1:
                         idx += i * average_dur
@@ -237,7 +241,7 @@ class Sampler(object):
 
 
 class Scale(object):
-    """
+    """縮放影片
     Scale images.
     Args:
         short_size(float | int): Short size of an image will be scaled to the short_size.
@@ -267,7 +271,8 @@ class Scale(object):
         self.backend = backend
 
     def __call__(self, results):
-        """
+        """執行resize的動作
+        
         Performs resize operations.
         Args:
             imgs (Sequence[PIL.Image]): List where each item is a PIL.Image.
@@ -335,7 +340,8 @@ class Scale(object):
 
 
 class CenterCrop(object):
-    """
+    """做Center Crop 裁切照片正中間的固定大小
+
     Center crop images
     Args:
         target_size(int): Center crop a square with the target_size from an image.
@@ -388,7 +394,8 @@ class CenterCrop(object):
 
 
 class Image2Array(object):
-    """
+    """把PIL.Image全部變成numpy array並且做維度轉換
+
     transfer PIL.Image to Numpy array and transpose dimensions from 'dhwc' to 'dchw'.
     Args:
         transpose: whether to transpose or not, default True, False for slowfast.
@@ -431,7 +438,8 @@ class Image2Array(object):
 
 
 class VideoDecoder(object):
-    """
+    """把整個影片讀進來放進memory
+
     Decode mp4 file to frames.
     Args:
         filepath: the file path of mp4 file
@@ -473,13 +481,13 @@ class VideoDecoder(object):
                 # maybe first frame is empty
                 if ret == False:
                     continue
-                img = frame[:, :, ::-1]
+                img = frame[:, :, ::-1]     # BGR 變成 RGB
                 sampledFrames.append(img)
             results['frames'] = sampledFrames
             results['frames_len'] = len(sampledFrames)
 
         elif self.backend == 'decord':
-            container = de.VideoReader(file_path)
+            container = de.VideoReader(file_path)   # 誰忘了import decord的套件
             frames_len = len(container)
             results['frames'] = container
             results['frames_len'] = frames_len
@@ -489,7 +497,8 @@ class VideoDecoder(object):
 
 
 class Normalization(object):
-    """
+    """做Normalize
+
     Normalization.
     Args:
         mean(Sequence[float]): mean values of different channels.
@@ -514,7 +523,8 @@ class Normalization(object):
             self.std = np.array(std, dtype=np.float32)
 
     def __call__(self, results):
-        """
+        """執行normalize
+
         Performs normalization operations.
         Args:
             imgs: Numpy array.
