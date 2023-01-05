@@ -131,7 +131,7 @@ class Detector(object):
         return PredictConfig(model_dir)
 
     def preprocess(self, image_list):
-        """前處理 讀取infer_cfg.yml裏面的前處理資訊來執行 再把資料複製到GPU"""
+        """前處理 解析infer_cfg.yml裏面的前處理資訊來執行 再把資料複製到GPU"""
 
         preprocess_ops = []
         for op_info in self.pred_config.preprocess_infos:
@@ -742,12 +742,14 @@ class PredictConfig():
 
     def __init__(self, model_dir):
         # parsing Yaml config for Preprocess
+        # 讀模型檔旁邊的infer_cfg.yml
+        # 讀取裏面的內容
         deploy_file = os.path.join(model_dir, 'infer_cfg.yml')
         with open(deploy_file) as f:
             yml_conf = yaml.safe_load(f)
         self.check_model(yml_conf)
         self.arch = yml_conf['arch']
-        self.preprocess_infos = yml_conf['Preprocess']
+        self.preprocess_infos = yml_conf['Preprocess']      # 儲存preprocess的操作
         self.min_subgraph_size = yml_conf['min_subgraph_size']
         self.labels = yml_conf['label_list']
         self.mask = False
@@ -827,6 +829,7 @@ def load_predictor(model_dir,
         raise ValueError(
             "Predict by TensorRT mode: {}, expect device=='GPU', but device == {}"
             .format(run_mode, device))
+    # 模型資料夾中必須要有這兩個指定檔案 檔名需要正確
     infer_model = os.path.join(model_dir, 'model.pdmodel')
     infer_params = os.path.join(model_dir, 'model.pdiparams')
     if not os.path.exists(infer_model):
@@ -909,7 +912,7 @@ def load_predictor(model_dir,
     config.switch_use_feed_fetch_ops(False)
     if delete_shuffle_pass:
         config.delete_pass("shuffle_channel_detect_pass")
-    predictor = create_predictor(config)
+    predictor = create_predictor(config)    # 建立predictor
     return predictor, config
 
 
