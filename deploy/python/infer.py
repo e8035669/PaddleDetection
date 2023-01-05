@@ -131,7 +131,11 @@ class Detector(object):
         return PredictConfig(model_dir)
 
     def preprocess(self, image_list):
+<<<<<<< HEAD
         """前處理 解析infer_cfg.yml裏面的前處理資訊來執行 再把資料複製到GPU"""
+=======
+        """前處理 讀取infer_cfg.yml裏面的前處理資訊來執行 再把資料複製到GPU"""
+>>>>>>> bdf8df3 (add documents)
 
         preprocess_ops = []
         for op_info in self.pred_config.preprocess_infos:
