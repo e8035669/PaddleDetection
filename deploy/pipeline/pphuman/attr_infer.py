@@ -128,13 +128,13 @@ class AttrDetector(Detector):
         for res in im_results:
             res = res.tolist()
             label_res = []
-            # gender 
+            # gender
             gender = 'Female' if res[22] > self.threshold else 'Male'
             label_res.append(gender)
             # age
             age = age_list[np.argmax(res[19:22])]
             label_res.append(age)
-            # direction 
+            # direction
             direction = direct_list[np.argmax(res[23:])]
             label_res.append(direction)
             # glasses
@@ -286,6 +286,30 @@ class AttrDetector(Detector):
             for k, v in res.items():
                 results[k].extend(v)
         return results
+
+
+class PpeAttrDetector(AttrDetector):
+    def __init__(self, model_dir, device='CPU', run_mode='paddle', batch_size=1, trt_min_shape=1, trt_max_shape=1280, trt_opt_shape=640, trt_calib_mode=False, cpu_threads=1, enable_mkldnn=False, output_dir='output', threshold=0.5):
+        super().__init__(model_dir, device, run_mode, batch_size, trt_min_shape, trt_max_shape, trt_opt_shape, trt_calib_mode, cpu_threads, enable_mkldnn, output_dir, threshold)
+
+    def postprocess(self, inputs, result):
+        im_results = result['output']
+
+        labels = self.pred_config.labels
+        batch_res = []
+        for res in im_results:
+            res = res.tolist()
+            label_res = []
+
+            helmet = 'Helmet' if res[0] > self.threshold else 'No Helmet'
+            label_res.append(helmet)
+
+            vest = 'Vest' if res[1] > self.threshold else 'No Vest'
+            label_res.append(vest)
+
+            batch_res.append(label_res)
+        result = {'output': batch_res}
+        return result
 
 
 def visualize(image_list, batch_res, output_dir='output'):

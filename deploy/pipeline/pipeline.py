@@ -47,7 +47,7 @@ from pptracking.python.mot_sde_infer import SDE_Detector
 from pptracking.python.mot.visualize import plot_tracking_dict
 from pptracking.python.mot.utils import flow_statistic, update_object_info
 
-from pphuman.attr_infer import AttrDetector
+from pphuman.attr_infer import AttrDetector, PpeAttrDetector
 from pphuman.video_action_infer import VideoActionRecognizer
 from pphuman.action_infer import SkeletonActionRecognizer, DetActionRecognizer, ClsActionRecognizer
 from pphuman.action_utils import KeyPointBuff, ActionVisualHelper
@@ -384,7 +384,8 @@ class PipePredictor(object):
             attr_cfg = self.cfg['ATTR']
             basemode = self.basemode['ATTR']
             self.modebase[basemode] = True
-            self.attr_predictor = AttrDetector.init_with_cfg(args, attr_cfg)    # 行人屬性辨識
+            # self.attr_predictor = AttrDetector.init_with_cfg(args, attr_cfg)    # 行人屬性辨識
+            self.attr_predictor = PpeAttrDetector.init_with_cfg(args, attr_cfg)    # 行人屬性辨識
 
         if self.with_vehicle_attr:
             vehicleattr_cfg = self.cfg['VEHICLE_ATTR']
