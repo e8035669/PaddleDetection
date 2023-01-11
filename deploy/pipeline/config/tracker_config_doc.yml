@@ -1,0 +1,28 @@
+# config of tracker for MOT SDE Detector, use 'JDETracker' as default.
+# The tracker of MOT JDE Detector (such as FairMOT) is exported together with the model.
+# Here 'min_box_area' and 'vertical_ratio' are set for pedestrian, you can modify for other objects tracking.
+
+type: OCSORTTracker # choose one tracker in ['JDETracker', 'OCSORTTracker']
+
+
+# BYTETracker
+JDETracker:
+  use_byte: True
+  det_thresh: 0.3     # 對於新物件 高於這個可信度拿來追蹤
+  conf_thres: 0.6     # 第一階段配對的confidence過濾
+  low_conf_thres: 0.1 # 第二階段配對的confidence (BYTETrack)
+  match_thres: 0.9    # 線性配對的threshold
+  min_box_area: 0     # 過濾物件框面積
+  vertical_ratio: 0   # 1.6 for pedestrian
+
+
+OCSORTTracker:
+  det_thresh: 0.4     # 物件框可信度高於這threshold會拿來配對
+  max_age: 30         # 失去追蹤的物件多久刪掉
+  min_hits: 3         # 追蹤超過3個frame認爲有效
+  iou_threshold: 0.3  # 配對的iou threshold
+  delta_t: 3          # 最長拿3個frame以前的資訊算速度向量 用於配對
+  inertia: 0.2        # 線性配對時的權重(?)
+  vertical_ratio: 0   # 過濾物件框的長寬比 行人通常設成1.6
+  min_box_area: 0     # 過濾物件框面積
+  use_byte: False     # 物件框可信度低的用OCR方法配對
