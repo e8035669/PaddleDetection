@@ -24,8 +24,8 @@ import sys
 from collections.abc import Sequence
 import paddle.nn.functional as F
 
-# add deploy path of PaddleDetection to sys.path
-parent_path = os.path.abspath(os.path.join(__file__, *(['..'] * 2)))
+# add deploy path of PadleDetection to sys.path
+parent_path = os.path.abspath(os.path.join(__file__, *(['..'] * 3)))
 sys.path.insert(0, parent_path)
 
 from paddle.inference import Config, create_predictor
@@ -263,14 +263,16 @@ class VideoActionRecognizer(object):
 def main():
     if not FLAGS.run_benchmark:
         assert FLAGS.batch_size == 1
-        assert FLAGS.use_fp16 is False
+#        assert FLAGS.use_fp16 is False
     else:
         assert FLAGS.use_gpu is True
 
     recognizer = VideoActionRecognizer(
         FLAGS.model_dir,
-        short_size=FLAGS.short_size,
-        target_size=FLAGS.target_size,
+#        short_size=FLAGS.short_size,
+        short_size=320,
+#        target_size=FLAGS.target_size,
+        target_size=320,
         device=FLAGS.device,
         run_mode=FLAGS.run_mode,
         batch_size=FLAGS.batch_size,
