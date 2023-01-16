@@ -530,7 +530,8 @@ class PipePredictor(object):
 
     def set_file_name(self, path):
         if type(path) == int:
-            self.file_name = path
+            # self.file_name = path
+            self.file_name = None
         elif path is not None:
             self.file_name = os.path.split(path)[-1]
             if "." in self.file_name:
@@ -673,7 +674,15 @@ class PipePredictor(object):
         # mot
         # mot -> attr
         # mot -> pose -> action
-        capture = cv2.VideoCapture(video_file)
+        # capture = cv2.VideoCapture(video_file)
+        if isinstance(video_file, int):
+            capture = cv2.VideoCapture(video_file, cv2.CAP_V4L2)
+            capture.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+            capture.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+            capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+            capture.set(cv2.CAP_PROP_FPS, 30)
+        else:
+            capture = cv2.VideoCapture(video_file)
 
         # Get Video info : resolution, fps, frame count
         width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -756,7 +765,8 @@ class PipePredictor(object):
         thread.start()
         time.sleep(1)
 
-        while (not framequeue.empty()):
+        # while (not framequeue.empty()):
+        while (True):
             # 潛在bug，如果串流影片讀取太久，速度慢於預測速度，while迴圈會提早離開
             # while迴圈之後沒將thread join
             # VideoCapture沒有執行release, 硬體資源沒有釋放
@@ -1117,6 +1127,7 @@ class PipePredictor(object):
                     # 或是寫入影片檔案 或是顯示於GUI上
                     writer.write(im)
                     if self.file_name is None:  # use camera_id
+                        cv2.namedWindow('Paddle-Pipeline', cv2.WINDOW_KEEPRATIO)
                         cv2.imshow('Paddle-Pipeline', im)
                         if cv2.waitKey(1) & 0xFF == ord('q'):
                             break
