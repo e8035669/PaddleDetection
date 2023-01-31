@@ -312,6 +312,64 @@ class PpeAttrDetector(AttrDetector):
         return result
 
 
+class Market1501AttrDetector(AttrDetector):
+    def __init__(self, model_dir, device='CPU', run_mode='paddle', batch_size=1, trt_min_shape=1, trt_max_shape=1280, trt_opt_shape=640, trt_calib_mode=False, cpu_threads=1, enable_mkldnn=False, output_dir='output', threshold=0.5):
+        super().__init__(model_dir, device, run_mode, batch_size, trt_min_shape, trt_max_shape, trt_opt_shape, trt_calib_mode, cpu_threads, enable_mkldnn, output_dir, threshold)
+
+    def postprocess(self, inputs, result):
+        im_results = result['output']
+
+        labels = self.pred_config.labels
+        batch_res = []
+
+        attrs = [
+            ('male', 'female'),
+            ('short hair', 'long hair'),
+            ('long sleeve', 'short sleeve'),
+            ('long lower-body cloth', 'short lower-body cloth'),
+            ('dress', 'pants'),
+            ('no hat', 'hat'),
+            ('no backpack', 'backpack'),
+            ('no bag', 'bag'),
+            ('no handbag', 'handbag'),
+        ]
+
+        ages = ['young', 'teenager', 'adult', 'old']
+
+        upper_clothes = [
+            'up black', 'up white', 'up red', 'up purple',
+            'up yellow', 'up gray', 'up blue', 'up green',
+        ]
+
+        lower_clothes = [
+            'down black', 'down white', 'down pink', 'down purple',
+            'down yellow', 'down gray', 'down blue', 'down green',
+            'down brown'
+        ]
+
+        for res in im_results:
+            res = res.tolist()
+            label_res = []
+
+            for i, attr in enumerate(attrs):
+                attr_str = attr[0] if res[i] > self.threshold else attr[1]
+                label_res.append(attr_str)
+
+            age = ages[np.argmax(res[9:9+4])]
+            label_res.append(age)
+
+            upper = upper_clothes[np.argmax(res[13:13+8])]
+            label_res.append(upper)
+
+            lower = lower_clothes[np.argmax(res[21:21+9])]
+            label_res.append(lower)
+
+            batch_res.append(label_res)
+        result = {'output': batch_res}
+
+        return result
+
+
 def visualize(image_list, batch_res, output_dir='output'):
 
     # visualize the predict result

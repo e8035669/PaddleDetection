@@ -120,3 +120,37 @@ class ActionVisualHelper(object):
             action_info["class"] = action_res["class"]
             action_info["life_remain"] = self.frame_life
             self.action_history[mot_id] = action_info
+
+
+class PpeVisualHelper:
+    def __init__(self, frame_life=20):
+        self.frame_life = frame_life
+        self.action_history = {}
+
+    def get_visualize_ids(self):
+        id_detected = self.check_detected()
+        return id_detected
+
+    def check_detected(self):
+        id_detected = {}
+        deperate_id = []
+        for mot_id in self.action_history:
+            self.action_history[mot_id]["life_remain"] -= 1
+            id_detected[mot_id] = self.action_history[mot_id]['class']
+            if self.action_history[mot_id]["life_remain"] == 0:
+                deperate_id.append(mot_id)
+        for mot_id in deperate_id:
+            del (self.action_history[mot_id])
+        return id_detected
+
+    def update(self, action_res_list):
+        for mot_id, action_res in action_res_list:
+            if mot_id in self.action_history:
+                if int(action_res["class"]) == 0 and int(self.action_history[
+                        mot_id]["class"]) != 0:
+                    continue
+            action_info = self.action_history.get(mot_id, {})
+            action_info["class"] = action_res["class"]
+            action_info["life_remain"] = self.frame_life
+            self.action_history[mot_id] = action_info
+

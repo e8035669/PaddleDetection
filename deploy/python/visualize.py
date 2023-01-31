@@ -387,9 +387,13 @@ def visualize_action(im,
             id_detected = collector.get_visualize_ids()
             for pid in id_detected:
                 id_action_dict[pid] = id_action_dict.get(pid, [])
-                id_action_dict[pid].append(action_type)
+                if isinstance(action_type, str):
+                    id_action_dict[pid].append(action_type)
+                else:
+                    id_action_dict[pid].append(action_type[id_detected[pid]])
+
         for mot_box in mot_boxes:
-            # mot_box is a format with [mot_id, class, score, xmin, ymin, w, h] 
+            # mot_box is a format with [mot_id, class, score, xmin, ymin, w, h]
             if mot_box[0] in id_action_dict:
                 text_position = (int(mot_box[3] + mot_box[5] * 0.75),
                                  int(mot_box[4] - 10))

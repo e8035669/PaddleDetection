@@ -47,10 +47,10 @@ from pptracking.python.mot_sde_infer import SDE_Detector
 from pptracking.python.mot.visualize import plot_tracking_dict
 from pptracking.python.mot.utils import flow_statistic, update_object_info
 
-from pphuman.attr_infer import AttrDetector, PpeAttrDetector
+from pphuman.attr_infer import AttrDetector, PpeAttrDetector, Market1501AttrDetector
 from pphuman.video_action_infer import VideoActionRecognizer
-from pphuman.action_infer import SkeletonActionRecognizer, DetActionRecognizer, ClsActionRecognizer
-from pphuman.action_utils import KeyPointBuff, ActionVisualHelper
+from pphuman.action_infer import SkeletonActionRecognizer, DetActionRecognizer, ClsActionRecognizer, PpeDetRecognizer
+from pphuman.action_utils import KeyPointBuff, ActionVisualHelper, PpeVisualHelper
 from pphuman.reid import ReID
 from pphuman.mtmct import mtmct_process
 
@@ -384,8 +384,14 @@ class PipePredictor(object):
             attr_cfg = self.cfg['ATTR']
             basemode = self.basemode['ATTR']
             self.modebase[basemode] = True
-            # self.attr_predictor = AttrDetector.init_with_cfg(args, attr_cfg)    # 行人屬性辨識
-            self.attr_predictor = PpeAttrDetector.init_with_cfg(args, attr_cfg)    # 行人屬性辨識
+            attr_class = attr_cfg.get('class', 'default')
+            if attr_class == 'ppeattr':
+                self.attr_predictor = PpeAttrDetector.init_with_cfg(args, attr_cfg)    # 行人屬性辨識
+            elif attr_class == 'market1501':
+                self.attr_predictor = Market1501AttrDetector.init_with_cfg(args, attr_cfg)
+            else:
+                self.attr_predictor = AttrDetector.init_with_cfg(args, attr_cfg)    # 行人屬性辨識
+
 
         if self.with_vehicle_attr:
             vehicleattr_cfg = self.cfg['VEHICLE_ATTR']
@@ -424,9 +430,14 @@ class PipePredictor(object):
                 basemode = self.basemode['ID_BASED_DETACTION']
                 self.modebase[basemode] = True
 
-                self.det_action_predictor = DetActionRecognizer.init_with_cfg(
-                    args, idbased_detaction_cfg)
-                self.det_action_visual_helper = ActionVisualHelper(1)
+                det_class = idbased_detaction_cfg.get('class', 'default')
+                if det_class == 'ppedet':
+                    self.det_action_predictor = PpeDetRecognizer.init_with_cfg(args, idbased_detaction_cfg)
+                    self.det_action_visual_helper = PpeVisualHelper(1)
+                else:
+                    self.det_action_predictor = DetActionRecognizer.init_with_cfg(args, idbased_detaction_cfg)
+                    self.det_action_visual_helper = ActionVisualHelper(1)
+
 
             if self.with_idbased_clsaction:
                 # 在物件框中再做分類模型預測
@@ -658,9 +669,9 @@ class PipePredictor(object):
             if self.cfg['visual']:
                 self.visualize_image(batch_file, batch_input, self.pipeline_res)    # 繪製影像並儲存
 
-    def capturevideo(self, capture, queue):
+    def capturevideo(self, capture, queue, stop_evt):
         frame_id = 0
-        while (1):
+        while (not stop_evt.is_set()):
             if queue.full():
                 time.sleep(0.1)
             else:
@@ -669,6 +680,7 @@ class PipePredictor(object):
                     return
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 queue.put(frame_rgb)
+        capture.release()
 
     def predict_video(self, video_file, thread_idx=0):
         # mot
@@ -760,8 +772,9 @@ class PipePredictor(object):
         retrograde_traj_len = 0
         framequeue = queue.Queue(10)
 
+        stop_evt = threading.Event()
         thread = threading.Thread(
-            target=self.capturevideo, args=(capture, framequeue))   # 把IO量大的拿取影像的工作丟給另一個thread
+            target=self.capturevideo, args=(capture, framequeue, stop_evt))   # 把IO量大的拿取影像的工作丟給另一個thread
         thread.start()
         time.sleep(1)
 
@@ -849,6 +862,7 @@ class PipePredictor(object):
                         else:
                             writer.write(im)
                             if self.file_name is None:  # use camera_id
+                                cv2.namedWindow('Paddle-Pipeline', cv2.WINDOW_KEEPRATIO)
                                 cv2.imshow('Paddle-Pipeline', im)
                                 if cv2.waitKey(1) & 0xFF == ord('q'):
                                     break
@@ -1132,6 +1146,8 @@ class PipePredictor(object):
                         if cv2.waitKey(1) & 0xFF == ord('q'):
                             break
 
+        stop_evt.set()
+        thread.join()
         if self.cfg['visual'] and len(self.pushurl) == 0:
             writer.release()
             print('save result to {}'.format(out_path))
@@ -1275,7 +1291,11 @@ class PipePredictor(object):
         det_action_res = result.get('det_action')
         if det_action_res is not None:
             visual_helper_for_display.append(self.det_action_visual_helper)
-            action_to_display.append("Smoking")
+            det_cls = self.cfg['ID_BASED_DETACTION'].get('class', 'default')
+            if det_cls == 'ppedet':
+                action_to_display.append(['W', 'WH', 'WV', 'WHV'])
+            else:
+                action_to_display.append("Smoking")
 
         cls_action_res = result.get('cls_action')
         if cls_action_res is not None:

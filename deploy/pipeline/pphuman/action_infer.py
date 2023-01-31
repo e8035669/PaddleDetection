@@ -485,6 +485,85 @@ class DetActionRecognizer(object):
         return result
 
 
+class PpeDetRecognizer(DetActionRecognizer):
+    def __init__(self, model_dir, device='CPU', run_mode='paddle', batch_size=1, trt_min_shape=1, trt_max_shape=1280, trt_opt_shape=640, trt_calib_mode=False, cpu_threads=1, enable_mkldnn=False, output_dir='output', threshold=0.5, display_frames=20, skip_frame_num=0):
+        super().__init__(model_dir, device, run_mode, batch_size, trt_min_shape, trt_max_shape, trt_opt_shape, trt_calib_mode, cpu_threads, enable_mkldnn, output_dir, threshold, display_frames, skip_frame_num)
+
+    def postprocess(self, det_result, mot_result):
+        np_boxes_num = det_result['boxes_num']  # 每張圖片有幾個box的list
+        if np_boxes_num[0] <= 0:
+            return [[], []]
+
+        mot_bboxes = mot_result.get('boxes')
+
+        cur_box_idx = 0
+        mot_id = []
+        act_res = []
+        for idx in range(len(mot_bboxes)):
+            tracker_id = mot_bboxes[idx, 0]
+
+            action_ret = {'class': 0, 'score': -1.0}
+            box_num = np_boxes_num[idx]
+            boxes = det_result['boxes'][cur_box_idx:cur_box_idx + box_num]  # 從所有boxes裏面取出某張圖片的boxes
+            cur_box_idx += box_num
+            isvalid = (boxes[:, 1] > self.threshold) # 過濾conf>threshold
+            valid_boxes = boxes[isvalid, :]
+
+            if valid_boxes.shape[0] >= 1:
+                for box in valid_boxes:
+                    action_ret['class'] |= (1 << int(box[0]))
+                action_ret['score'] = float(np.mean(valid_boxes[:,1]))
+
+                self.result_history[
+                    tracker_id] = [action_ret['class'], self.frame_life, action_ret['score']]
+            else:
+                # 沒有的話 就取上次這個id的辨識結果的confidence來用 預設最多可以重複利用20個frame
+                history_det, life_remain, history_score = self.result_history.get(
+                    tracker_id, [0, self.frame_life, -1.0])
+                action_ret['class'] = history_det
+                action_ret['score'] = -1.0
+                life_remain -= 1
+                if life_remain <= 0 and tracker_id in self.result_history:
+                    del (self.result_history[tracker_id])
+                elif tracker_id in self.result_history:
+                    self.result_history[tracker_id][1] = life_remain
+                else:
+                    self.result_history[tracker_id] = [
+                        history_det, life_remain, history_score
+                    ]
+
+            mot_id.append(tracker_id)
+            act_res.append(action_ret)
+        result = list(zip(mot_id, act_res))
+        self.id_in_last_frame = mot_id
+
+        return result
+
+    def reuse_result(self, mot_result):
+        mot_bboxes = mot_result.get('boxes')
+
+        mot_id = []
+        act_res = []
+
+        for idx in range(len(mot_bboxes)):
+            tracker_id = mot_bboxes[idx, 0]
+            history_cls, life_remain, history_score = self.result_history.get(
+                tracker_id, [0, 0, -1.0])
+
+            life_remain -= 1
+            if tracker_id in self.result_history:
+                self.result_history[tracker_id][1] = life_remain
+
+            action_ret = {'class': history_cls, 'score': history_score}
+            mot_id.append(tracker_id)
+            act_res.append(action_ret)
+
+        result = list(zip(mot_id, act_res))
+        self.id_in_last_frame = mot_id
+
+        return result
+
+
 class ClsActionRecognizer(AttrDetector):
     """在物件框中的圖片 再執行一次分類模型
 
