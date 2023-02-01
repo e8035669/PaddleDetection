@@ -358,11 +358,21 @@ class Market1501AttrDetector(AttrDetector):
             age = ages[np.argmax(res[9:9+4])]
             label_res.append(age)
 
-            upper = upper_clothes[np.argmax(res[13:13+8])]
-            label_res.append(upper)
+            uppers = np.array(res[13:13+8])
+            upper_idx = np.argmax(uppers)
+            if uppers[upper_idx] > self.threshold:
+                upper = upper_clothes[upper_idx]
+                label_res.append(upper)
+            else:
+                label_res.append('up n/a')
 
-            lower = lower_clothes[np.argmax(res[21:21+9])]
-            label_res.append(lower)
+            lowers = np.array(res[21:21+9])
+            lower_idx = np.argmax(lowers)
+            if lowers[lower_idx] > self.threshold:
+                lower = lower_clothes[lower_idx]
+                label_res.append(lower)
+            else:
+                label_res.append('down n/a')
 
             batch_res.append(label_res)
         result = {'output': batch_res}
