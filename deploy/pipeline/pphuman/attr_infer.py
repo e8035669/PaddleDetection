@@ -379,6 +379,52 @@ class Market1501AttrDetector(AttrDetector):
 
         return result
 
+class Market1501ColorAttrDetector(AttrDetector):
+    def __init__(self, model_dir, device='CPU', run_mode='paddle', batch_size=1, trt_min_shape=1, trt_max_shape=1280, trt_opt_shape=640, trt_calib_mode=False, cpu_threads=1, enable_mkldnn=False, output_dir='output', threshold=0.5):
+        super().__init__(model_dir, device, run_mode, batch_size, trt_min_shape, trt_max_shape, trt_opt_shape, trt_calib_mode, cpu_threads, enable_mkldnn, output_dir, threshold)
+
+    def postprocess(self, inputs, result):
+        im_results = result['output']
+
+        labels = self.pred_config.labels
+        batch_res = []
+
+        upper_clothes = [
+            'up black', 'up white', 'up red', 'up purple',
+            'up yellow', 'up gray', 'up blue', 'up green',
+        ]
+
+        lower_clothes = [
+            'down black', 'down white', 'down pink', 'down purple',
+            'down yellow', 'down gray', 'down blue', 'down green',
+            'down brown'
+        ]
+
+        for res in im_results:
+            res = res.tolist()
+            label_res = []
+
+            uppers = np.array(res[0:8])
+            upper_idx = np.argmax(uppers)
+            if uppers[upper_idx] > self.threshold:
+                upper = upper_clothes[upper_idx]
+                label_res.append(upper)
+            else:
+                label_res.append('up n/a')
+
+            lowers = np.array(res[8:8+9])
+            lower_idx = np.argmax(lowers)
+            if lowers[lower_idx] > self.threshold:
+                lower = lower_clothes[lower_idx]
+                label_res.append(lower)
+            else:
+                label_res.append('down n/a')
+
+            batch_res.append(label_res)
+        result = {'output': batch_res}
+
+        return result
+
 
 def visualize(image_list, batch_res, output_dir='output'):
 

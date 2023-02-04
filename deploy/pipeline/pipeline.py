@@ -24,6 +24,7 @@ import copy
 import threading
 import queue
 import time
+from enum import Enum
 from collections import defaultdict
 from collections.abc import Sequence
 from datacollector import DataCollector, Result
@@ -47,7 +48,7 @@ from pptracking.python.mot_sde_infer import SDE_Detector
 from pptracking.python.mot.visualize import plot_tracking_dict
 from pptracking.python.mot.utils import flow_statistic, update_object_info
 
-from pphuman.attr_infer import AttrDetector, PpeAttrDetector, Market1501AttrDetector
+from pphuman.attr_infer import AttrDetector, PpeAttrDetector, Market1501AttrDetector, Market1501ColorAttrDetector
 from pphuman.video_action_infer import VideoActionRecognizer
 from pphuman.action_infer import SkeletonActionRecognizer, DetActionRecognizer, ClsActionRecognizer, PpeDetRecognizer
 from pphuman.action_utils import KeyPointBuff, ActionVisualHelper, PpeVisualHelper
@@ -242,6 +243,18 @@ def get_model_dir(cfg):
             print("mot_model_dir model_dir: ", model_dir)
 
 
+class AttrClass(Enum):
+    PPEATTR = 1
+    MARKET1501 = 2
+    MARKET1501_COLOR = 3
+    DEFAULT = 4
+
+
+class DetClass(Enum):
+    PPEDET = 1
+    DEFAULT = 2
+
+
 class PipePredictor(object):
     """
     Predictor in single camera
@@ -384,11 +397,13 @@ class PipePredictor(object):
             attr_cfg = self.cfg['ATTR']
             basemode = self.basemode['ATTR']
             self.modebase[basemode] = True
-            self.attr_class = attr_cfg.get('class', 'default')
-            if self.attr_class == 'ppeattr':
+            self.attr_class = AttrClass[attr_cfg.get('class', 'default').upper()]
+            if self.attr_class == AttrClass.PPEATTR:
                 self.attr_predictor = PpeAttrDetector.init_with_cfg(args, attr_cfg)    # 行人屬性辨識
-            elif self.attr_class == 'market1501':
+            elif self.attr_class == AttrClass.MARKET1501:
                 self.attr_predictor = Market1501AttrDetector.init_with_cfg(args, attr_cfg)
+            elif self.attr_class == AttrClass.MARKET1501_COLOR:
+                self.attr_predictor = Market1501ColorAttrDetector.init_with_cfg(args, attr_cfg)
             else:
                 self.attr_predictor = AttrDetector.init_with_cfg(args, attr_cfg)    # 行人屬性辨識
 
@@ -430,8 +445,8 @@ class PipePredictor(object):
                 basemode = self.basemode['ID_BASED_DETACTION']
                 self.modebase[basemode] = True
 
-                self.det_class = idbased_detaction_cfg.get('class', 'default')
-                if self.det_class == 'ppedet':
+                self.det_class = DetClass[idbased_detaction_cfg.get('class', 'default').upper()]
+                if self.det_class == DetClass.PPEDET:
                     self.det_action_predictor = PpeDetRecognizer.init_with_cfg(args, idbased_detaction_cfg)
                     self.det_action_visual_helper = PpeVisualHelper(1)
                 else:
@@ -888,7 +903,8 @@ class PipePredictor(object):
                 if self.with_human_attr:
                     if frame_id > self.warmup_frame:
                         self.pipe_timer.module_time['attr'].start()
-                    if self.attr_class == 'market_1501':
+                    if self.attr_class in [AttrClass.MARKET1501, AttrClass.MARKET1501_COLOR]:
+                    # if False:
                         attr_input, _, _ = crop_image_with_mot(frame_rgb, mot_res, expand=False)
                         attr_res = self.attr_predictor.predict_image(attr_input, visual=False)
                     else:
@@ -1295,7 +1311,7 @@ class PipePredictor(object):
         det_action_res = result.get('det_action')
         if det_action_res is not None:
             visual_helper_for_display.append(self.det_action_visual_helper)
-            if self.det_class == 'ppedet':
+            if self.det_class == DetClass.PPEDET:
                 action_to_display.append(['W', 'WH', 'WV', 'WHV'])
             else:
                 action_to_display.append("Smoking")
