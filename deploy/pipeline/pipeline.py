@@ -961,6 +961,14 @@ class PipePredictor(object):
                         self.pipe_timer.module_time['det_action'].start()
                     det_action_res = self.det_action_predictor.predict(
                         crop_input, mot_res)                # 對每個物件框再做另一個物件辨識 (抽菸偵測)
+                    if self.det_class == DetClass.PPEDET:
+                        det_action_res = copy.deepcopy(det_action_res)
+                        for (_mot_id, act_res), roi in zip(det_action_res, new_bboxes):
+                            act_res['boxes'][:, 2] += roi[0]
+                            act_res['boxes'][:, 3] += roi[1]
+                            act_res['boxes'][:, 4] += roi[0]
+                            act_res['boxes'][:, 5] += roi[1]
+
                     if frame_id > self.warmup_frame:
                         self.pipe_timer.module_time['det_action'].end()
                     self.pipeline_res.update(det_action_res, 'det_action')
@@ -1313,6 +1321,13 @@ class PipePredictor(object):
             visual_helper_for_display.append(self.det_action_visual_helper)
             if self.det_class == DetClass.PPEDET:
                 action_to_display.append(['W', 'WH', 'WV', 'WHV'])
+                image = visualize_box_mask(
+                    image,
+                    {'boxes': np.concatenate([b['boxes'] for i, b in det_action_res.items() if i in ids])},
+                    ['H', 'V'],
+                    threshold=self.det_action_predictor.threshold
+                    )
+                image = np.array(image)
             else:
                 action_to_display.append("Smoking")
 

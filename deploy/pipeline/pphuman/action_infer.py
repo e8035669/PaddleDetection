@@ -502,26 +502,28 @@ class PpeDetRecognizer(DetActionRecognizer):
         for idx in range(len(mot_bboxes)):
             tracker_id = mot_bboxes[idx, 0]
 
-            action_ret = {'class': 0, 'score': -1.0}
+            action_ret = {'class': 0, 'score': -1.0, 'boxes': np.zeros((0, 6))}
             box_num = np_boxes_num[idx]
             boxes = det_result['boxes'][cur_box_idx:cur_box_idx + box_num]  # 從所有boxes裏面取出某張圖片的boxes
             cur_box_idx += box_num
             isvalid = (boxes[:, 1] > self.threshold) # 過濾conf>threshold
-            valid_boxes = boxes[isvalid, :]
+            valid_boxes = boxes[isvalid, :].copy()
 
             if valid_boxes.shape[0] >= 1:
                 for box in valid_boxes:
                     action_ret['class'] |= (1 << int(box[0]))
                 action_ret['score'] = float(np.mean(valid_boxes[:,1]))
+                action_ret['boxes'] = valid_boxes
 
                 self.result_history[
-                    tracker_id] = [action_ret['class'], self.frame_life, action_ret['score']]
+                    tracker_id] = [action_ret['class'], self.frame_life, action_ret['score'], action_ret['boxes']]
             else:
                 # 沒有的話 就取上次這個id的辨識結果的confidence來用 預設最多可以重複利用20個frame
-                history_det, life_remain, history_score = self.result_history.get(
-                    tracker_id, [0, self.frame_life, -1.0])
+                history_det, life_remain, history_score, raw_bboxes = self.result_history.get(
+                    tracker_id, [0, self.frame_life, -1.0, np.zeros((0, 6))])
                 action_ret['class'] = history_det
                 action_ret['score'] = -1.0
+                action_ret['boxes'] = raw_bboxes
                 life_remain -= 1
                 if life_remain <= 0 and tracker_id in self.result_history:
                     del (self.result_history[tracker_id])
@@ -529,7 +531,7 @@ class PpeDetRecognizer(DetActionRecognizer):
                     self.result_history[tracker_id][1] = life_remain
                 else:
                     self.result_history[tracker_id] = [
-                        history_det, life_remain, history_score
+                        history_det, life_remain, history_score, raw_bboxes
                     ]
 
             mot_id.append(tracker_id)
@@ -547,14 +549,14 @@ class PpeDetRecognizer(DetActionRecognizer):
 
         for idx in range(len(mot_bboxes)):
             tracker_id = mot_bboxes[idx, 0]
-            history_cls, life_remain, history_score = self.result_history.get(
-                tracker_id, [0, 0, -1.0])
+            history_cls, life_remain, history_score, raw_bboxes = self.result_history.get(
+                tracker_id, [0, 0, -1.0, np.zeros((0, 6))])
 
             life_remain -= 1
             if tracker_id in self.result_history:
                 self.result_history[tracker_id][1] = life_remain
 
-            action_ret = {'class': history_cls, 'score': history_score}
+            action_ret = {'class': history_cls, 'score': history_score, 'boxes': raw_bboxes}
             mot_id.append(tracker_id)
             act_res.append(action_ret)
 

@@ -360,7 +360,7 @@ class Market1501AttrDetector(AttrDetector):
 
             uppers = np.array(res[13:13+8])
             upper_idx = np.argmax(uppers)
-            if uppers[upper_idx] > self.threshold:
+            if uppers[upper_idx] > 0.1:
                 upper = upper_clothes[upper_idx]
                 label_res.append(upper)
             else:
@@ -368,7 +368,7 @@ class Market1501AttrDetector(AttrDetector):
 
             lowers = np.array(res[21:21+9])
             lower_idx = np.argmax(lowers)
-            if lowers[lower_idx] > self.threshold:
+            if lowers[lower_idx] > 0.1:
                 lower = lower_clothes[lower_idx]
                 label_res.append(lower)
             else:
