@@ -686,6 +686,111 @@ class ClsActionRecognizer(AttrDetector):
 
         return result
 
+class ColorDetect:
+    def __init__(self) -> None:
+        x, y = np.linspace(1, 0, 10), np.linspace(1, 0, 20)
+        xx, yy = np.meshgrid(x, y, sparse=True)
+        self.uw = np.stack([
+            xx * yy,
+            (1 - xx) * yy,
+            xx * (1 - yy),
+            (1 - xx) * (1 - yy),
+        ])
+        self.uw = np.expand_dims(self.uw, -1)
+
+        x, y = np.linspace(1.05, -0.05, 10), np.linspace(0.6, 0.0, 20)
+        xx, yy = np.meshgrid(x, y, sparse=True)
+        self.lw = np.stack([
+            xx * yy,
+            (1 - xx) * yy,
+            xx * (1 - yy),
+            (1 - xx) * (1 - yy),
+        ])
+        self.lw = np.expand_dims(self.lw, -1)
+
+    def determine_color(self, rgb, hsv):
+        color = 'black'
+        if hsv[2] < 0.20:
+            # black
+            color = 'black'
+            pass
+        elif hsv[1] < 0.20:
+            # gray white
+            if hsv[2] < 0.25:
+                color = 'black'
+            elif hsv[2] < 0.4:
+                color = 'gray'
+            else:
+                color = 'white'
+        else:
+            # color
+            if hsv[0] < 30:
+                color = 'red'
+            elif hsv[0] < 80:
+                color = 'yellow'
+            elif hsv[0] < 180:
+                color = 'green'
+            elif hsv[0] < 250:
+                color = 'blue'
+            elif hsv[0] < 280:
+                color = 'purple'
+            elif hsv[0] < 330:
+                color = 'pink'
+            else:
+                color = 'red'
+        return color
+
+    def to_hsv(self, rgb):
+        rgb_img = rgb.reshape(1, 1, 3)
+        hsv = cv2.cvtColor(rgb_img, cv2.COLOR_RGB2HSV_FULL).reshape(3).astype(float)
+        hsv *= [360.0 / 255.0, 1 / 255.0, 1 / 255.0]
+        return hsv
+
+
+    def get_upper_color(self, crop_input, kpts):
+        # print('Upper')
+        kpt = kpts[[5, 6, 11, 12], :2] # 4 x 2(X,Y)
+        kpt = kpt.reshape(4, 1, 1, 2)
+        sample_pos = (self.uw * kpt).sum(0).reshape(-1, 2).astype(int)
+        valid_idx = np.all(sample_pos >= 0, axis=1) & np.all(sample_pos < crop_input.shape[1::-1], axis=1)
+        sample_pos = sample_pos[valid_idx]
+        sample = crop_input[sample_pos[:, 1], sample_pos[:, 0]] # N * 3 (RGB)
+        mean_rgb = sample.mean(0).astype(np.uint8).reshape(1, 1, 3)
+        hsv = self.to_hsv(mean_rgb)
+        print('RGB', mean_rgb.reshape(3), 'HSV', [f'{i:.2f}' for i in hsv.tolist()])
+        return self.determine_color(mean_rgb, hsv)
+
+    def get_lower_color(self, crop_input, kpts):
+        # print('Lower')
+        kpt = kpts[[11, 12, 13, 14], :2] # 4 x 2(X,Y)
+        kpt = kpt.reshape(4, 1, 1, 2)
+        sample_pos = (self.lw * kpt).sum(0).reshape(-1, 2).astype(int)
+        valid_idx = np.all(sample_pos >= 0, axis=1) & np.all(sample_pos < crop_input.shape[1::-1], axis=1)
+        sample_pos = sample_pos[valid_idx]
+        sample = crop_input[sample_pos[:, 1], sample_pos[:, 0]] # N * 3 (RGB)
+        mean_rgb = sample.mean(0).astype(np.uint8).reshape(1, 1, 3)
+        hsv = self.to_hsv(mean_rgb)
+        print('RGB', mean_rgb.reshape(3), 'HSV', [f'{i:.2f}' for i in hsv.tolist()])
+        return self.determine_color(mean_rgb, hsv)
+
+    def get_one_color(self, crop_input, kpts):
+        upcolor = self.get_upper_color(crop_input, kpts)
+        locolor = self.get_lower_color(crop_input, kpts)
+        return upcolor, locolor
+
+    def predict_image(self, crop_input, kpt_pred, mot_res):
+        # print('Color Detect')
+        # print('crop_input', len(crop_input), crop_input[0].shape)
+        # print('kpt_pred', *[(k, v.shape) for k, v in kpt_pred.items()])
+
+        colors = []
+        for img, kpt, box in zip(crop_input, kpt_pred['keypoint'], mot_res['boxes']):
+            track_id = box[0]
+            upcolor, locolor = self.get_one_color(img, kpt)
+            colors.append([f'upper {upcolor}', f'lower {locolor}'])
+
+        return {'output': colors}
+
 
 def main():
     detector = SkeletonActionRecognizer(
