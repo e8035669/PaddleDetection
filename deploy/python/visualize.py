@@ -17,7 +17,7 @@ from __future__ import division
 import os
 import cv2
 import numpy as np
-from PIL import Image, ImageDraw, ImageFile
+from PIL import Image, ImageDraw, ImageFile, ImageFont
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 import math
 
@@ -579,5 +579,33 @@ def visualize_vehicle_retrograde(im, mot_res, vehicle_retrograde_res):
                 [(xmax + 1, ymin - th), (xmax + tw + 1, ymin)],
                 fill=(0, 255, 0))
             draw.text((xmax + 1, ymin - th), text, fill=(0, 255, 0))
+
+    return im
+
+
+def read_font(im, font_path):
+    return ImageFont.truetype(font_path, int(im.shape[0] / 720 * 50))
+
+
+def visualize_logo(im, logo_text, font):
+    if isinstance(im, str):
+        im = Image.open(im).convert('RGB')
+    elif isinstance(im, np.ndarray):
+        im = Image.fromarray(im)
+
+    draw = ImageDraw.Draw(im)
+
+    for i, text in enumerate(logo_text):
+        text = ('\n' * i) + text
+
+        fill_color = (0, 0, 0)
+        position = (22, 22)
+        draw.text(position, text, font=font, fill=fill_color)
+
+        fill_color = (204, 255, 255)
+        if i > 0:
+            fill_color = (0, 0, 204)
+        position = (20, 20)
+        draw.text(position, text, font=font, fill=fill_color)
 
     return im

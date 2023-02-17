@@ -42,7 +42,7 @@ from python.infer import Detector, DetectorPicoDet
 from python.keypoint_infer import KeyPointDetector
 from python.keypoint_postprocess import translate_to_ori_images
 from python.preprocess import decode_image, ShortSizeScale
-from python.visualize import visualize_box_mask, visualize_attr, visualize_pose, visualize_action, visualize_vehicleplate, visualize_vehiclepress, visualize_lane, visualize_vehicle_retrograde
+from python.visualize import visualize_box_mask, visualize_attr, visualize_pose, visualize_action, visualize_vehicleplate, visualize_vehiclepress, visualize_lane, visualize_vehicle_retrograde, visualize_logo, read_font
 
 from pptracking.python.mot_sde_infer import SDE_Detector
 from pptracking.python.mot.visualize import plot_tracking_dict
@@ -465,19 +465,6 @@ class PipePredictor(object):
                 self.cls_action_visual_helper = ActionVisualHelper(1)
 
             if self.with_skeleton_action:
-                # 在物件框中做骨架偵測 + 基於有時間序列的骨架的行爲辨識
-                skeleton_action_cfg = self.cfg['SKELETON_ACTION']
-                display_frames = skeleton_action_cfg['display_frames']
-                self.coord_size = skeleton_action_cfg['coord_size']
-                basemode = self.basemode['SKELETON_ACTION']
-                self.modebase[basemode] = True
-                skeleton_action_frames = skeleton_action_cfg['max_frames']
-
-                self.skeleton_action_predictor = SkeletonActionRecognizer.init_with_cfg(
-                    args, skeleton_action_cfg)
-                self.skeleton_action_visual_helper = ActionVisualHelper(
-                    display_frames)
-
                 kpt_cfg = self.cfg['KPT']
                 kpt_model_dir = kpt_cfg['model_dir']
                 kpt_batch_size = kpt_cfg['batch_size']
@@ -493,6 +480,21 @@ class PipePredictor(object):
                     args.cpu_threads,
                     args.enable_mkldnn,
                     use_dark=False)
+
+            if self.with_skeleton_action:
+                # 在物件框中做骨架偵測 + 基於有時間序列的骨架的行爲辨識
+                skeleton_action_cfg = self.cfg['SKELETON_ACTION']
+                display_frames = skeleton_action_cfg['display_frames']
+                self.coord_size = skeleton_action_cfg['coord_size']
+                basemode = self.basemode['SKELETON_ACTION']
+                self.modebase[basemode] = True
+                skeleton_action_frames = skeleton_action_cfg['max_frames']
+
+                self.skeleton_action_predictor = SkeletonActionRecognizer.init_with_cfg(
+                    args, skeleton_action_cfg)
+                self.skeleton_action_visual_helper = ActionVisualHelper(
+                    display_frames)
+
                 self.kpt_buff = KeyPointBuff(skeleton_action_frames)
 
             if self.with_vehicleplate:
@@ -553,6 +555,9 @@ class PipePredictor(object):
                 self.modebase[basemode] = True
                 self.video_action_predictor = VideoActionRecognizer.init_with_cfg(
                     args, video_action_cfg)
+
+        self.logo_text = self.cfg.get('LOGO_TEXT', ['Demo'])
+        self.font = None
 
     def set_file_name(self, path):
         if type(path) == int:
@@ -1340,6 +1345,11 @@ class PipePredictor(object):
             image = visualize_action(image, mot_res['boxes'],
                                      visual_helper_for_display,
                                      action_to_display)
+        if self.font is None:
+            self.font = read_font(image, 'SourceHanSerifTW-Heavy.otf')
+
+        image = visualize_logo(image, self.logo_text, self.font)
+        image = np.array(image)
 
         return image
 
