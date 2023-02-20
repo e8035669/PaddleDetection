@@ -566,6 +566,21 @@ class PpeDetRecognizer(DetActionRecognizer):
         return result
 
 
+class PpeDetFilter():
+    def __init__(self) -> None:
+        pass
+
+    def predict(self, mot, ppedet_res, kpt_res):
+        print('-' * 30)
+        print('mot', mot)
+        print('ppedet_res', ppedet_res)
+        print('kpt_res', kpt_res)
+        print('kpt shape', np.array(kpt_res['keypoint'][0]).shape,
+              np.array(kpt_res['keypoint'][1]).shape, np.array(kpt_res['bbox']).shape)
+
+        pass
+
+
 class ClsActionRecognizer(AttrDetector):
     """在物件框中的圖片 再執行一次分類模型
 

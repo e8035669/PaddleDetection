@@ -50,7 +50,7 @@ from pptracking.python.mot.utils import flow_statistic, update_object_info
 
 from pphuman.attr_infer import AttrDetector, PpeAttrDetector, Market1501AttrDetector, Market1501ColorAttrDetector
 from pphuman.video_action_infer import VideoActionRecognizer
-from pphuman.action_infer import SkeletonActionRecognizer, DetActionRecognizer, ClsActionRecognizer, PpeDetRecognizer
+from pphuman.action_infer import SkeletonActionRecognizer, DetActionRecognizer, ClsActionRecognizer, PpeDetRecognizer, PpeDetFilter
 from pphuman.action_utils import KeyPointBuff, ActionVisualHelper, PpeVisualHelper
 from pphuman.reid import ReID
 from pphuman.mtmct import mtmct_process
@@ -305,6 +305,8 @@ class PipePredictor(object):
                 'ID_BASED_CLSACTION', False) else False
         self.with_mtmct = cfg.get('REID', False)['enable'] if cfg.get(
             'REID', False) else False
+        self.with_ppedet_filter = cfg.get('PPEDET_FILTER', False)['enable'] if cfg.get(
+            'PPEDET_FILTER', False) else False
 
         if self.with_skeleton_action:
             print('SkeletonAction Recognition enabled')
@@ -464,7 +466,7 @@ class PipePredictor(object):
                     args, idbased_clsaction_cfg)
                 self.cls_action_visual_helper = ActionVisualHelper(1)
 
-            if self.with_skeleton_action:
+            if self.with_skeleton_action or self.with_ppedet_filter:
                 kpt_cfg = self.cfg['KPT']
                 kpt_model_dir = kpt_cfg['model_dir']
                 kpt_batch_size = kpt_cfg['batch_size']
@@ -496,6 +498,12 @@ class PipePredictor(object):
                     display_frames)
 
                 self.kpt_buff = KeyPointBuff(skeleton_action_frames)
+
+            if self.with_ppedet_filter:
+                if self.det_class != DetClass.PPEDET:
+                    raise RuntimeError('DetClass should be PPEDET')
+                self.ppedet_filter = PpeDetFilter()
+                pass
 
             if self.with_vehicleplate:
                 vehicleplate_cfg = self.cfg['VEHICLE_PLATE']
@@ -969,10 +977,9 @@ class PipePredictor(object):
                     if self.det_class == DetClass.PPEDET:
                         det_action_res = copy.deepcopy(det_action_res)
                         for (_mot_id, act_res), roi in zip(det_action_res, new_bboxes):
-                            act_res['boxes'][:, 2] += roi[0]
-                            act_res['boxes'][:, 3] += roi[1]
-                            act_res['boxes'][:, 4] += roi[0]
-                            act_res['boxes'][:, 5] += roi[1]
+                            act_res['expand_crop_roi'] = roi.copy()
+                            act_res['raw_boxes'] = act_res['boxes'].copy()
+                            act_res['boxes'][:, 2:6] += [roi[0], roi[1], roi[0], roi[1]]
 
                     if frame_id > self.warmup_frame:
                         self.pipe_timer.module_time['det_action'].end()
@@ -993,7 +1000,7 @@ class PipePredictor(object):
                     if self.cfg['visual']:
                         self.cls_action_visual_helper.update(cls_action_res)
 
-                if self.with_skeleton_action:
+                if self.with_skeleton_action or self.with_ppedet_filter:
                     if frame_id > self.warmup_frame:
                         self.pipe_timer.module_time['kpt'].start()
                     kpt_pred = self.kpt_predictor.predict_image(
@@ -1014,29 +1021,36 @@ class PipePredictor(object):
 
                     self.pipeline_res.update(kpt_res, 'kpt')
 
-                    self.kpt_buff.update(kpt_res, mot_res)  # collect kpt output 蒐集每個frame的骨架點
-                    state = self.kpt_buff.get_state(
-                    )  # whether frame num is enough or lost tracker 檢查蒐集的骨架點是否足夠
+                    if self.with_skeleton_action:
+                        self.kpt_buff.update(kpt_res, mot_res)  # collect kpt output 蒐集每個frame的骨架點
+                        state = self.kpt_buff.get_state(
+                        )  # whether frame num is enough or lost tracker 檢查蒐集的骨架點是否足夠
 
-                    skeleton_action_res = {}
-                    if state:
-                        if frame_id > self.warmup_frame:
-                            self.pipe_timer.module_time[
-                                'skeleton_action'].start()
-                        collected_keypoint = self.kpt_buff.get_collected_keypoint(
-                        )  # reoragnize kpt output with ID  取出已經累積的骨架點
-                        skeleton_action_input = parse_mot_keypoint(
-                            collected_keypoint, self.coord_size)
-                        skeleton_action_res = self.skeleton_action_predictor.predict_skeleton_with_mot(
-                            skeleton_action_input)      # 用累積一段時間的骨架點 去預測 一個人的行爲分類 (跌倒辨識)
-                        if frame_id > self.warmup_frame:
-                            self.pipe_timer.module_time['skeleton_action'].end()
-                        self.pipeline_res.update(skeleton_action_res,
-                                                 'skeleton_action')
+                        skeleton_action_res = {}
+                        if state:
+                            if frame_id > self.warmup_frame:
+                                self.pipe_timer.module_time[
+                                    'skeleton_action'].start()
+                            collected_keypoint = self.kpt_buff.get_collected_keypoint(
+                            )  # reoragnize kpt output with ID  取出已經累積的骨架點
+                            skeleton_action_input = parse_mot_keypoint(
+                                collected_keypoint, self.coord_size)
+                            skeleton_action_res = self.skeleton_action_predictor.predict_skeleton_with_mot(
+                                skeleton_action_input)      # 用累積一段時間的骨架點 去預測 一個人的行爲分類 (跌倒辨識)
+                            if frame_id > self.warmup_frame:
+                                self.pipe_timer.module_time['skeleton_action'].end()
+                            self.pipeline_res.update(skeleton_action_res,
+                                                    'skeleton_action')
 
-                    if self.cfg['visual']:
-                        self.skeleton_action_visual_helper.update(
-                            skeleton_action_res)
+                        if self.cfg['visual']:
+                            self.skeleton_action_visual_helper.update(
+                                skeleton_action_res)
+
+                    if self.with_ppedet_filter:
+                        mot = self.pipeline_res.get('mot')
+                        ppedet_res = self.pipeline_res.get('det_action')
+                        self.ppedet_filter.predict(mot, ppedet_res, kpt_res)
+                        pass
 
                 if self.with_mtmct and frame_id % 10 == 0:
                     crop_input, img_qualities, rects = self.reid_predictor.crop_image_with_mot(
