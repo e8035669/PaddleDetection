@@ -35,7 +35,8 @@ class Result(object):
             'vehicle_attr': dict(),
             'lanes': dict(),
             'vehicle_press': dict(),
-            'vehicle_retrograde': dict()
+            'vehicle_retrograde': dict(),
+            'other': dict(),
         }
 
     def update(self, res, name):
@@ -54,7 +55,7 @@ class DataCollector(object):
     """
   DataCollector of Pipeline, collect results in every frames and assign it to each track ids.
   mainly used in mtmct.
-  
+
   data struct:
   collector:
     - [id1]: (all results of N frames)

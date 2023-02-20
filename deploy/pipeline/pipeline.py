@@ -50,7 +50,7 @@ from pptracking.python.mot.utils import flow_statistic, update_object_info
 
 from pphuman.attr_infer import AttrDetector, PpeAttrDetector, Market1501AttrDetector, Market1501ColorAttrDetector
 from pphuman.video_action_infer import VideoActionRecognizer
-from pphuman.action_infer import SkeletonActionRecognizer, DetActionRecognizer, ClsActionRecognizer, PpeDetRecognizer, PpeDetFilter
+from pphuman.action_infer import SkeletonActionRecognizer, DetActionRecognizer, ClsActionRecognizer, ColorDetect, PpeDetRecognizer, PpeDetFilter
 from pphuman.action_utils import KeyPointBuff, ActionVisualHelper, PpeVisualHelper
 from pphuman.reid import ReID
 from pphuman.mtmct import mtmct_process
@@ -307,6 +307,8 @@ class PipePredictor(object):
             'REID', False) else False
         self.with_ppedet_filter = cfg.get('PPEDET_FILTER', False)['enable'] if cfg.get(
             'PPEDET_FILTER', False) else False
+        self.with_skeleton_color = cfg.get('SKELETON_COLOR', False)['enable'] if cfg.get(
+            'SKELETON_COLOR', False) else False
 
         if self.with_skeleton_action:
             print('SkeletonAction Recognition enabled')
@@ -466,7 +468,7 @@ class PipePredictor(object):
                     args, idbased_clsaction_cfg)
                 self.cls_action_visual_helper = ActionVisualHelper(1)
 
-            if self.with_skeleton_action or self.with_ppedet_filter:
+            if self.with_skeleton_action or self.with_ppedet_filter or self.with_skeleton_color :
                 kpt_cfg = self.cfg['KPT']
                 kpt_model_dir = kpt_cfg['model_dir']
                 kpt_batch_size = kpt_cfg['batch_size']
@@ -503,6 +505,11 @@ class PipePredictor(object):
                 if self.det_class != DetClass.PPEDET:
                     raise RuntimeError('DetClass should be PPEDET')
                 self.ppedet_filter = PpeDetFilter()
+                pass
+
+            if self.with_skeleton_color:
+                self.color_detect = ColorDetect()
+                # here
                 pass
 
             if self.with_vehicleplate:
@@ -1000,11 +1007,12 @@ class PipePredictor(object):
                     if self.cfg['visual']:
                         self.cls_action_visual_helper.update(cls_action_res)
 
-                if self.with_skeleton_action or self.with_ppedet_filter:
+                if self.with_skeleton_action or self.with_ppedet_filter or self.with_skeleton_color:
                     if frame_id > self.warmup_frame:
                         self.pipe_timer.module_time['kpt'].start()
                     kpt_pred = self.kpt_predictor.predict_image(
                         crop_input, visual=False)           # 對每個物件框做骨架偵測
+                    kpt_pred1 = copy.deepcopy(kpt_pred)
                     # kpt_pred['keypoint']: [B x 17 x 3], [batch, 17, (x, y, conf)]
                     # kpt_pred['score']: [B x 1]
                     # print('kpt_pred', [(k, v.shape) for k, v in kpt_pred.items()])
@@ -1051,6 +1059,10 @@ class PipePredictor(object):
                         ppedet_res = self.pipeline_res.get('det_action')
                         self.ppedet_filter.predict(mot, ppedet_res, kpt_res)
                         pass
+
+                    if self.with_skeleton_color:
+                        colors = self.color_detect.predict_image(crop_input, kpt_pred1, mot_res)
+                        self.pipeline_res.update({'color': colors}, 'other')
 
                 if self.with_mtmct and frame_id % 10 == 0:
                     crop_input, img_qualities, rects = self.reid_predictor.crop_image_with_mot(
@@ -1359,6 +1371,14 @@ class PipePredictor(object):
             image = visualize_action(image, mot_res['boxes'],
                                      visual_helper_for_display,
                                      action_to_display)
+
+        other_res = result.get('other')
+        if other_res is not None:
+            boxes = mot_res['boxes'][:, 1:]
+            color_res = other_res['color']['output']
+            image = visualize_attr(image, color_res, boxes)
+            image = np.array(image)
+
         if self.font is None:
             self.font = read_font(image, 'SourceHanSerifTW-Heavy.otf')
 
