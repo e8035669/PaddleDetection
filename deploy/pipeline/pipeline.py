@@ -50,7 +50,7 @@ from pptracking.python.mot.utils import flow_statistic, update_object_info
 
 from pphuman.attr_infer import AttrDetector, PpeAttrDetector, Market1501AttrDetector, Market1501ColorAttrDetector
 from pphuman.video_action_infer import VideoActionRecognizer
-from pphuman.action_infer import SkeletonActionRecognizer, DetActionRecognizer, ClsActionRecognizer, PpeDetRecognizer
+from pphuman.action_infer import SkeletonActionRecognizer, DetActionRecognizer, ClsActionRecognizer, ColorDetect, PpeDetRecognizer
 from pphuman.action_utils import KeyPointBuff, ActionVisualHelper, PpeVisualHelper
 from pphuman.reid import ReID
 from pphuman.mtmct import mtmct_process
@@ -305,6 +305,8 @@ class PipePredictor(object):
                 'ID_BASED_CLSACTION', False) else False
         self.with_mtmct = cfg.get('REID', False)['enable'] if cfg.get(
             'REID', False) else False
+        self.with_skeleton_color = cfg.get('SKELETON_COLOR', False)['enable'] if cfg.get(
+            'SKELETON_COLOR', False) else False
 
         if self.with_skeleton_action:
             print('SkeletonAction Recognition enabled')
@@ -464,20 +466,7 @@ class PipePredictor(object):
                     args, idbased_clsaction_cfg)
                 self.cls_action_visual_helper = ActionVisualHelper(1)
 
-            if self.with_skeleton_action:
-                # 在物件框中做骨架偵測 + 基於有時間序列的骨架的行爲辨識
-                skeleton_action_cfg = self.cfg['SKELETON_ACTION']
-                display_frames = skeleton_action_cfg['display_frames']
-                self.coord_size = skeleton_action_cfg['coord_size']
-                basemode = self.basemode['SKELETON_ACTION']
-                self.modebase[basemode] = True
-                skeleton_action_frames = skeleton_action_cfg['max_frames']
-
-                self.skeleton_action_predictor = SkeletonActionRecognizer.init_with_cfg(
-                    args, skeleton_action_cfg)
-                self.skeleton_action_visual_helper = ActionVisualHelper(
-                    display_frames)
-
+            if self.with_skeleton_action or self.with_skeleton_color:
                 kpt_cfg = self.cfg['KPT']
                 kpt_model_dir = kpt_cfg['model_dir']
                 kpt_batch_size = kpt_cfg['batch_size']
@@ -493,7 +482,27 @@ class PipePredictor(object):
                     args.cpu_threads,
                     args.enable_mkldnn,
                     use_dark=False)
+
+            if self.with_skeleton_action:
+                # 在物件框中做骨架偵測 + 基於有時間序列的骨架的行爲辨識
+                skeleton_action_cfg = self.cfg['SKELETON_ACTION']
+                display_frames = skeleton_action_cfg['display_frames']
+                self.coord_size = skeleton_action_cfg['coord_size']
+                basemode = self.basemode['SKELETON_ACTION']
+                self.modebase[basemode] = True
+                skeleton_action_frames = skeleton_action_cfg['max_frames']
+
+                self.skeleton_action_predictor = SkeletonActionRecognizer.init_with_cfg(
+                    args, skeleton_action_cfg)
+                self.skeleton_action_visual_helper = ActionVisualHelper(
+                    display_frames)
+
                 self.kpt_buff = KeyPointBuff(skeleton_action_frames)
+
+            if self.with_skeleton_color:
+                self.color_detect = ColorDetect()
+                # here
+                pass
 
             if self.with_vehicleplate:
                 vehicleplate_cfg = self.cfg['VEHICLE_PLATE']
@@ -988,11 +997,12 @@ class PipePredictor(object):
                     if self.cfg['visual']:
                         self.cls_action_visual_helper.update(cls_action_res)
 
-                if self.with_skeleton_action:
+                if self.with_skeleton_action or self.with_skeleton_color:
                     if frame_id > self.warmup_frame:
                         self.pipe_timer.module_time['kpt'].start()
                     kpt_pred = self.kpt_predictor.predict_image(
                         crop_input, visual=False)           # 對每個物件框做骨架偵測
+                    kpt_pred1 = copy.deepcopy(kpt_pred)
                     # kpt_pred['keypoint']: [B x 17 x 3], [batch, 17, (x, y, conf)]
                     # kpt_pred['score']: [B x 1]
                     # print('kpt_pred', [(k, v.shape) for k, v in kpt_pred.items()])
@@ -1009,29 +1019,34 @@ class PipePredictor(object):
 
                     self.pipeline_res.update(kpt_res, 'kpt')
 
-                    self.kpt_buff.update(kpt_res, mot_res)  # collect kpt output 蒐集每個frame的骨架點
-                    state = self.kpt_buff.get_state(
-                    )  # whether frame num is enough or lost tracker 檢查蒐集的骨架點是否足夠
+                    if self.with_skeleton_action:
+                        self.kpt_buff.update(kpt_res, mot_res)  # collect kpt output 蒐集每個frame的骨架點
+                        state = self.kpt_buff.get_state(
+                        )  # whether frame num is enough or lost tracker 檢查蒐集的骨架點是否足夠
 
-                    skeleton_action_res = {}
-                    if state:
-                        if frame_id > self.warmup_frame:
-                            self.pipe_timer.module_time[
-                                'skeleton_action'].start()
-                        collected_keypoint = self.kpt_buff.get_collected_keypoint(
-                        )  # reoragnize kpt output with ID  取出已經累積的骨架點
-                        skeleton_action_input = parse_mot_keypoint(
-                            collected_keypoint, self.coord_size)
-                        skeleton_action_res = self.skeleton_action_predictor.predict_skeleton_with_mot(
-                            skeleton_action_input)      # 用累積一段時間的骨架點 去預測 一個人的行爲分類 (跌倒辨識)
-                        if frame_id > self.warmup_frame:
-                            self.pipe_timer.module_time['skeleton_action'].end()
-                        self.pipeline_res.update(skeleton_action_res,
-                                                 'skeleton_action')
+                        skeleton_action_res = {}
+                        if state:
+                            if frame_id > self.warmup_frame:
+                                self.pipe_timer.module_time[
+                                    'skeleton_action'].start()
+                            collected_keypoint = self.kpt_buff.get_collected_keypoint(
+                            )  # reoragnize kpt output with ID  取出已經累積的骨架點
+                            skeleton_action_input = parse_mot_keypoint(
+                                collected_keypoint, self.coord_size)
+                            skeleton_action_res = self.skeleton_action_predictor.predict_skeleton_with_mot(
+                                skeleton_action_input)      # 用累積一段時間的骨架點 去預測 一個人的行爲分類 (跌倒辨識)
+                            if frame_id > self.warmup_frame:
+                                self.pipe_timer.module_time['skeleton_action'].end()
+                            self.pipeline_res.update(skeleton_action_res,
+                                                    'skeleton_action')
 
-                    if self.cfg['visual']:
-                        self.skeleton_action_visual_helper.update(
-                            skeleton_action_res)
+                        if self.cfg['visual']:
+                            self.skeleton_action_visual_helper.update(
+                                skeleton_action_res)
+
+                    if self.with_skeleton_color:
+                        colors = self.color_detect.predict_image(crop_input, kpt_pred1, mot_res)
+                        self.pipeline_res.update({'color': colors}, 'other')
 
                 if self.with_mtmct and frame_id % 10 == 0:
                     crop_input, img_qualities, rects = self.reid_predictor.crop_image_with_mot(
@@ -1340,6 +1355,13 @@ class PipePredictor(object):
             image = visualize_action(image, mot_res['boxes'],
                                      visual_helper_for_display,
                                      action_to_display)
+
+        other_res = result.get('other')
+        if other_res is not None:
+            boxes = mot_res['boxes'][:, 1:]
+            color_res = other_res['color']['output']
+            image = visualize_attr(image, color_res, boxes)
+            image = np.array(image)
 
         return image
 
