@@ -305,6 +305,7 @@ class PipePredictor(object):
                 'ID_BASED_CLSACTION', False) else False
         self.with_mtmct = cfg.get('REID', False)['enable'] if cfg.get(
             'REID', False) else False
+
         self.with_ppedet_filter = cfg.get('PPEDET_FILTER', False)['enable'] if cfg.get(
             'PPEDET_FILTER', False) else False
         self.with_skeleton_color = cfg.get('SKELETON_COLOR', False)['enable'] if cfg.get(
@@ -505,12 +506,10 @@ class PipePredictor(object):
                 if self.det_class != DetClass.PPEDET:
                     raise RuntimeError('DetClass should be PPEDET')
                 self.ppedet_filter = PpeDetFilter()
-                pass
 
             if self.with_skeleton_color:
                 self.color_detect = ColorDetect()
-                # here
-                pass
+
 
             if self.with_vehicleplate:
                 vehicleplate_cfg = self.cfg['VEHICLE_PLATE']
@@ -1057,8 +1056,11 @@ class PipePredictor(object):
                     if self.with_ppedet_filter:
                         mot = self.pipeline_res.get('mot')
                         ppedet_res = self.pipeline_res.get('det_action')
-                        self.ppedet_filter.predict(mot, ppedet_res, kpt_res)
-                        pass
+                        new_ppedet_res = self.ppedet_filter.predict(mot, ppedet_res, kpt_res)
+
+                        self.pipeline_res.update(new_ppedet_res, 'det_action')
+                        if self.cfg['visual']:
+                            self.det_action_visual_helper.update(new_ppedet_res)
 
                     if self.with_skeleton_color:
                         colors = self.color_detect.predict_image(crop_input, kpt_pred1, mot_res)
@@ -1382,8 +1384,9 @@ class PipePredictor(object):
         if self.font is None:
             self.font = read_font(image, 'SourceHanSerifTW-Heavy.otf')
 
-        image = visualize_logo(image, self.logo_text, self.font)
-        image = np.array(image)
+        if self.font is not None:
+            image = visualize_logo(image, self.logo_text, self.font)
+            image = np.array(image)
 
         return image
 
@@ -1445,6 +1448,7 @@ class PipePredictor(object):
 
 
 def main():
+    np.set_printoptions(suppress=True)
     cfg = merge_cfg(FLAGS)  # use command params to update config
     print_arguments(cfg)
 

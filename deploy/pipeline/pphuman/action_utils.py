@@ -145,10 +145,10 @@ class PpeVisualHelper:
 
     def update(self, action_res_list):
         for mot_id, action_res in action_res_list:
-            if mot_id in self.action_history:
-                if int(action_res["class"]) == 0 and int(self.action_history[
-                        mot_id]["class"]) != 0:
-                    continue
+            # if mot_id in self.action_history:
+            #     if int(action_res["class"]) == 0 and int(self.action_history[
+            #             mot_id]["class"]) != 0:
+            #         continue
             action_info = self.action_history.get(mot_id, {})
             action_info["class"] = action_res["class"]
             action_info["life_remain"] = self.frame_life

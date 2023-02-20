@@ -571,14 +571,61 @@ class PpeDetFilter():
         pass
 
     def predict(self, mot, ppedet_res, kpt_res):
-        print('-' * 30)
-        print('mot', mot)
-        print('ppedet_res', ppedet_res)
-        print('kpt_res', kpt_res)
-        print('kpt shape', np.array(kpt_res['keypoint'][0]).shape,
-              np.array(kpt_res['keypoint'][1]).shape, np.array(kpt_res['bbox']).shape)
+        # print('-' * 30)
+        # print('mot', mot)
+        # print('ppedet_res', ppedet_res)
+        # print('kpt_res', kpt_res)
+        # print('kpt shape', np.array(kpt_res['keypoint'][0]).shape,
+        #       np.array(kpt_res['keypoint'][1]).shape, np.array(kpt_res['bbox']).shape)
+        ret_ppedet_res = []
+        for track_bbox, kpt in zip(mot['boxes'], kpt_res['keypoint'][0]):
+            track_id = track_bbox[0]
+            track_data = ppedet_res[track_id]
+            hats_vests = track_data['boxes']
+            if len(hats_vests) == 0:
+                continue
 
-        pass
+            keypoints = np.array(kpt)
+            eye_pos = keypoints[3:5, 0:2].mean(0)
+            shoulder = keypoints[5:7, 0:2].mean(0)
+            dis_eye_shoulder = np.linalg.norm(eye_pos - shoulder)   # 計算眼睛到肩膀距離 作爲人的大小基準
+            abdomen_pos = keypoints[[5, 6, 11, 12], 0:2]
+            abdomen_range = np.array([np.min(abdomen_pos, 0), np.max(abdomen_pos, 0)])
+            abdomen_center_x = abdomen_range[:, 0].mean()
+            # 肚子寬度至少大於眼睛到肩膀距離 避免人橫著骨架沒有寬度
+            abdomen_width = max(abdomen_range[1,0] - abdomen_range[0,0], dis_eye_shoulder)
+            abdomen_range = np.array([
+                [abdomen_center_x - abdomen_width / 2, abdomen_range[0, 1]],
+                [abdomen_center_x + abdomen_width / 2, abdomen_range[1, 1]]])
+
+            new_class = 0
+            for objs in hats_vests:
+                cls_id = int(objs[0])
+                pos = objs[2:6] # xyxy
+                if cls_id == 0: # hat
+                    hat_center = np.mean([pos[0:2], pos[2:4]], 0)
+                    distance = np.linalg.norm(hat_center - eye_pos)
+                    # 帽子與眼睛距離 要小於眼睛到肩膀距離的n倍
+                    if distance < dis_eye_shoulder * 2:
+                        new_class |= (1 << 0)
+                    else:
+                        print('ID', track_id, 'Hat is filtered, ', int(distance), int(dis_eye_shoulder))
+                        pass
+                elif cls_id == 1:
+                    vest_center = np.mean([pos[0:2], pos[2:4]], 0)
+                    # 背心中心要進入肚子區域
+                    if np.all(vest_center > abdomen_range[0]) and np.all(vest_center < abdomen_range[1]):
+                        new_class |= (1 << 1)
+                    else:
+                        print('ID', track_id, 'Vest is filtered')
+                else:
+                    raise
+            # override data
+            if track_data['class'] != new_class:
+                print('ID', track_id, 'old class', track_data['class'], 'new class', new_class)
+            track_data['class'] = new_class
+            ret_ppedet_res.append((track_id, track_data))
+        return ret_ppedet_res
 
 
 class ClsActionRecognizer(AttrDetector):

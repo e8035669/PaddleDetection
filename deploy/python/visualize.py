@@ -584,7 +584,11 @@ def visualize_vehicle_retrograde(im, mot_res, vehicle_retrograde_res):
 
 
 def read_font(im, font_path):
-    return ImageFont.truetype(font_path, int(im.shape[0] / 720 * 50))
+    if os.path.exists(font_path):
+        return ImageFont.truetype(font_path, int(im.shape[0] / 720 * 50))
+
+    print('Font file not exist, load default')
+    return ImageFont.load_default()
 
 
 def visualize_logo(im, logo_text, font):
