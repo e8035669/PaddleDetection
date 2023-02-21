@@ -570,7 +570,7 @@ class PipePredictor(object):
                 self.video_action_predictor = VideoActionRecognizer.init_with_cfg(
                     args, video_action_cfg)
 
-        self.logo_text = self.cfg.get('LOGO_TEXT', ['Demo'])
+        self.logo_text = self.cfg.get('LOGO_TEXT', [])
         self.font = None
 
     def set_file_name(self, path):
@@ -707,7 +707,7 @@ class PipePredictor(object):
         frame_id = 0
         while (not stop_evt.is_set()):
             if queue.full():
-                time.sleep(0.1)
+                time.sleep(0.01)
             else:
                 ret, frame = capture.read()
                 if not ret:
@@ -756,7 +756,11 @@ class PipePredictor(object):
                 os.makedirs(self.output_dir)
             out_path = os.path.join(self.output_dir, video_out_name + ".mp4")
             fourcc = cv2.VideoWriter_fourcc(* 'mp4v')
-            writer = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
+            if not self.cfg.get('norecord', False):
+                writer = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
+            else:
+                writer = None
+
 
         frame_id = 0
 
@@ -804,7 +808,7 @@ class PipePredictor(object):
         illegal_parking_dict = None
         cars_count = 0
         retrograde_traj_len = 0
-        framequeue = queue.Queue(10)
+        framequeue = queue.Queue(3)
 
         stop_evt = threading.Event()
         thread = threading.Thread(
@@ -894,7 +898,8 @@ class PipePredictor(object):
                         if len(self.pushurl) > 0:
                             pushstream.pipe.stdin.write(im.tobytes())
                         else:
-                            writer.write(im)
+                            if writer is not None:
+                                writer.write(im)
                             if self.file_name is None:  # use camera_id
                                 cv2.namedWindow('Paddle-Pipeline', cv2.WINDOW_KEEPRATIO)
                                 cv2.imshow('Paddle-Pipeline', im)
@@ -1200,7 +1205,8 @@ class PipePredictor(object):
                     pushstream.pipe.stdin.write(im.tobytes())
                 else:
                     # 或是寫入影片檔案 或是顯示於GUI上
-                    writer.write(im)
+                    if writer is not None:
+                        writer.write(im)
                     if self.file_name is None:  # use camera_id
                         cv2.namedWindow('Paddle-Pipeline', cv2.WINDOW_KEEPRATIO)
                         cv2.imshow('Paddle-Pipeline', im)
@@ -1210,8 +1216,9 @@ class PipePredictor(object):
         stop_evt.set()
         thread.join()
         if self.cfg['visual'] and len(self.pushurl) == 0:
-            writer.release()
-            print('save result to {}'.format(out_path))
+            if writer is not None:
+                writer.release()
+                print('save result to {}'.format(out_path))
 
     def visualize_video(self,
                         image_rgb,
@@ -1381,10 +1388,11 @@ class PipePredictor(object):
             image = visualize_attr(image, color_res, boxes)
             image = np.array(image)
 
-        if self.font is None:
+        if (self.font is None) and (len(self.logo_text) > 0):
+            # https://github.com/jdh8/source-han-serif/blob/master/SourceHanSerifTW-Heavy.otf?raw=true
             self.font = read_font(image, 'SourceHanSerifTW-Heavy.otf')
 
-        if self.font is not None:
+        if (self.font is not None) and (len(self.logo_text) > 0):
             image = visualize_logo(image, self.logo_text, self.font)
             image = np.array(image)
 
