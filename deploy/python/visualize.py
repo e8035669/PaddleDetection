@@ -413,6 +413,54 @@ def visualize_action(im,
     return im
 
 
+def visualize_action_pil(im,
+                     mot_boxes,
+                     action_visual_collector=None,
+                     action_text="",
+                     video_action_score=None,
+                     video_action_text="",
+                     font=None):
+    if isinstance(im, str):
+        im = Image.open(im).convert('RGB')
+    elif isinstance(im, np.ndarray):
+        im = Image.fromarray(im)
+    im_w, im_h = im.size
+    draw = ImageDraw.Draw(im)
+
+    text_scale = max(1, im_w / 400.)
+    text_thickness = 2
+
+    if action_visual_collector:
+        id_action_dict = {}
+        for collector, action_type in zip(action_visual_collector, action_text):
+            id_detected = collector.get_visualize_ids()
+            for pid in id_detected:
+                id_action_dict[pid] = id_action_dict.get(pid, [])
+                if isinstance(action_type, str):
+                    id_action_dict[pid].append(action_type)
+                else:
+                    id_action_dict[pid].append(action_type[id_detected[pid]])
+
+        for mot_box in mot_boxes:
+            # mot_box is a format with [mot_id, class, score, xmin, ymin, w, h]
+            if mot_box[0] in id_action_dict:
+                text_position = (int(mot_box[3] + mot_box[5] * 0.75),
+                                 int(mot_box[4] - 10))
+                display_text = ', '.join(id_action_dict[mot_box[0]])
+                draw.text(text_position, display_text, (0, 0, 255), font, anchor="ls")
+
+    if video_action_score:
+        draw.text(
+            (int(im_w / 2), int(15 * text_scale) + 5),
+            video_action_text + ': %.2f' % video_action_score,
+            (0, 0, 255),
+            font,
+            anchor="ls"
+        )
+
+    return im
+
+
 def visualize_vehicleplate(im, results, boxes=None):
     if isinstance(im, str):
         im = Image.open(im)
@@ -583,9 +631,9 @@ def visualize_vehicle_retrograde(im, mot_res, vehicle_retrograde_res):
     return im
 
 
-def read_font(im, font_path):
+def read_font(font_path, font_size):
     if os.path.exists(font_path):
-        return ImageFont.truetype(font_path, int(im.shape[0] / 720 * 50))
+        return ImageFont.truetype(font_path, font_size)
 
     print('Font file not exist, load default')
     return ImageFont.load_default()

@@ -179,7 +179,7 @@ def _download_dist(url, path, md5sum=None):
                 from paddle.distributed import ParallelEnv
                 unique_endpoints = _get_unique_endpoints(ParallelEnv()
                                                          .trainer_endpoints[:])
-                with open(lock_path, 'w'):  # touch    
+                with open(lock_path, 'w'):  # touch
                     os.utime(lock_path, None)
                 if ParallelEnv().current_endpoint in unique_endpoints:
                     _download(url, path, md5sum)
@@ -276,7 +276,7 @@ def _decompress_dist(fname):
             # trainer pipeline in order
             # **change this if you have more elegent methods**
             if ParallelEnv().current_endpoint in unique_endpoints:
-                with open(lock_path, 'w'):  # touch    
+                with open(lock_path, 'w'):  # touch
                     os.utime(lock_path, None)
                 _decompress(fname)
                 os.remove(lock_path)

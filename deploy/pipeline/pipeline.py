@@ -42,7 +42,7 @@ from python.infer import Detector, DetectorPicoDet
 from python.keypoint_infer import KeyPointDetector
 from python.keypoint_postprocess import translate_to_ori_images
 from python.preprocess import decode_image, ShortSizeScale
-from python.visualize import visualize_box_mask, visualize_attr, visualize_pose, visualize_action, visualize_vehicleplate, visualize_vehiclepress, visualize_lane, visualize_vehicle_retrograde, visualize_logo, read_font
+from python.visualize import visualize_box_mask, visualize_attr, visualize_pose, visualize_action, visualize_vehicleplate, visualize_vehiclepress, visualize_lane, visualize_vehicle_retrograde, visualize_logo, read_font, visualize_action_pil
 
 from pptracking.python.mot_sde_infer import SDE_Detector
 from pptracking.python.mot.visualize import plot_tracking_dict
@@ -61,7 +61,7 @@ from ppvehicle.vehicle_pressing import VehiclePressingRecognizer
 from ppvehicle.vehicle_retrograde import VehicleRetrogradeRecognizer
 from ppvehicle.lane_seg_infer import LaneSegPredictor
 
-from download import auto_download_model
+from download import auto_download_model, _download_dist
 
 
 class Pipeline(object):
@@ -571,7 +571,12 @@ class PipePredictor(object):
                     args, video_action_cfg)
 
         self.logo_text = self.cfg.get('LOGO_TEXT', [])
-        self.font = None
+        self.font_path = 'SourceHanSerifTW-Heavy.otf'
+        self.font_logo = None
+        self.font_url = 'https://github.com/jdh8/source-han-serif/raw/master/SourceHanSerifTW-Heavy.otf'
+        if not os.path.exists(self.font_path):
+            _download_dist(self.font_url, './')
+        self.font_action = None
 
     def set_file_name(self, path):
         if type(path) == int:
@@ -1360,7 +1365,8 @@ class PipePredictor(object):
         if det_action_res is not None:
             visual_helper_for_display.append(self.det_action_visual_helper)
             if self.det_class == DetClass.PPEDET:
-                action_to_display.append(['W', 'WH', 'WV', 'WHV'])
+                # action_to_display.append(['W', 'WH', 'WV', 'WHV'])
+                action_to_display.append(['沒穿沒戴', '帽子', '背心', '帽子背心'])
                 image = visualize_box_mask(
                     image,
                     {'boxes': np.concatenate([b['boxes'] for i, b in det_action_res.items() if i in ids])},
@@ -1377,9 +1383,17 @@ class PipePredictor(object):
             action_to_display.append("Calling")
 
         if len(visual_helper_for_display) > 0:
-            image = visualize_action(image, mot_res['boxes'],
-                                     visual_helper_for_display,
-                                     action_to_display)
+            # image = visualize_action(image, mot_res['boxes'],
+            #                          visual_helper_for_display,
+            #                          action_to_display)
+            if self.font_action is None:
+                self.font_action = read_font(self.font_path, int(image.shape[0] / 720. * 32))
+
+            image = visualize_action_pil(image, mot_res['boxes'],
+                                         visual_helper_for_display,
+                                         action_to_display, font=self.font_action)
+            image = np.array(image)
+
 
         other_res = result.get('other')
         if other_res is not None:
@@ -1388,12 +1402,11 @@ class PipePredictor(object):
             image = visualize_attr(image, color_res, boxes)
             image = np.array(image)
 
-        if (self.font is None) and (len(self.logo_text) > 0):
-            # https://github.com/jdh8/source-han-serif/blob/master/SourceHanSerifTW-Heavy.otf?raw=true
-            self.font = read_font(image, 'SourceHanSerifTW-Heavy.otf')
+        if (self.font_logo is None) and (len(self.logo_text) > 0):
+            self.font_logo = read_font(self.font_path, int(image.shape[0] / 720 * 50))
 
-        if (self.font is not None) and (len(self.logo_text) > 0):
-            image = visualize_logo(image, self.logo_text, self.font)
+        if (self.font_logo is not None) and (len(self.logo_text) > 0):
+            image = visualize_logo(image, self.logo_text, self.font_logo)
             image = np.array(image)
 
         return image
