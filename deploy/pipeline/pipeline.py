@@ -1367,13 +1367,13 @@ class PipePredictor(object):
             if self.det_class == DetClass.PPEDET:
                 # action_to_display.append(['W', 'WH', 'WV', 'WHV'])
                 action_to_display.append(['沒穿沒戴', '帽子', '背心', '帽子背心'])
-                image = visualize_box_mask(
-                    image,
-                    {'boxes': np.concatenate([b['boxes'] for i, b in det_action_res.items() if i in ids])},
-                    ['H', 'V'],
-                    threshold=self.det_action_predictor.threshold
-                    )
-                image = np.array(image)
+                # image = visualize_box_mask(
+                #     image,
+                #     {'boxes': np.concatenate([b['boxes'] for i, b in det_action_res.items() if i in ids])},
+                #     ['H', 'V'],
+                #     threshold=self.det_action_predictor.threshold
+                #     )
+                # image = np.array(image)
             else:
                 action_to_display.append("Smoking")
 

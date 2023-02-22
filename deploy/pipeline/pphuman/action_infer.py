@@ -900,7 +900,7 @@ class ColorDetect:
         sample = crop_input[sample_pos[:, 1], sample_pos[:, 0]] # N * 3 (RGB)
         mean_rgb = sample.mean(0).astype(np.uint8).reshape(1, 1, 3)
         hsv = self.to_hsv(mean_rgb)
-        print('RGB', mean_rgb.reshape(3), 'HSV', [f'{i:.2f}' for i in hsv.tolist()])
+        # print('RGB', mean_rgb.reshape(3), 'HSV', [f'{i:.2f}' for i in hsv.tolist()])
         return self.determine_color(mean_rgb, hsv)
 
     def get_lower_color(self, crop_input, kpts):
@@ -913,7 +913,7 @@ class ColorDetect:
         sample = crop_input[sample_pos[:, 1], sample_pos[:, 0]] # N * 3 (RGB)
         mean_rgb = sample.mean(0).astype(np.uint8).reshape(1, 1, 3)
         hsv = self.to_hsv(mean_rgb)
-        print('RGB', mean_rgb.reshape(3), 'HSV', [f'{i:.2f}' for i in hsv.tolist()])
+        # print('RGB', mean_rgb.reshape(3), 'HSV', [f'{i:.2f}' for i in hsv.tolist()])
         return self.determine_color(mean_rgb, hsv)
 
     def get_one_color(self, crop_input, kpts):
