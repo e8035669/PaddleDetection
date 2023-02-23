@@ -202,22 +202,22 @@ def plot_tracking_dict(image,
     im = np.ascontiguousarray(np.copy(image))
     im_h, im_w = im.shape[:2]
     if do_break_in_counting or do_illegal_parking_recognition:
-        entrance = np.array(entrance[:-1])  # last pair is [im_w, im_h] 
+        entrance = np.array(entrance[:-1])  # last pair is [im_w, im_h]
 
     text_scale = max(0.5, image.shape[1] / 3000.)
     text_thickness = 2
     line_thickness = max(1, int(image.shape[1] / 500.))
 
-    if num_classes == 1:
-        if records is not None:
-            start = records[-1].find('Total')
-            end = records[-1].find('In')
-            cv2.putText(
-                im,
-                records[-1][start:end], (0, int(40 * text_scale) + 10),
-                cv2.FONT_ITALIC,
-                text_scale, (0, 0, 255),
-                thickness=text_thickness)
+    # if num_classes == 1:
+    #     if records is not None:
+    #         start = records[-1].find('Total')
+    #         end = records[-1].find('In')
+    #         cv2.putText(
+    #             im,
+    #             records[-1][start:end], (0, int(40 * text_scale) + 10),
+    #             cv2.FONT_ITALIC,
+    #             text_scale, (0, 0, 255),
+    #             thickness=text_thickness)
 
     if num_classes == 1 and do_entrance_counting:
         entrance_line = tuple(map(int, entrance))
@@ -286,13 +286,13 @@ def plot_tracking_dict(image,
         tlwhs = tlwhs_dict[cls_id]
         obj_ids = obj_ids_dict[cls_id]
         scores = scores_dict[cls_id]
-        cv2.putText(
-            im,
-            'frame: %d fps: %.2f num: %d' % (frame_id, fps, len(tlwhs)),
-            (0, int(15 * text_scale) + 5),
-            cv2.FONT_ITALIC,
-            text_scale, (0, 0, 255),
-            thickness=text_thickness)
+        # cv2.putText(
+        #     im,
+        #     'frame: %d fps: %.2f num: %d' % (frame_id, fps, len(tlwhs)),
+        #     (0, int(15 * text_scale) + 5),
+        #     cv2.FONT_ITALIC,
+        #     text_scale, (0, 0, 255),
+        #     thickness=text_thickness)
 
         record_id = set()
         for i, tlwh in enumerate(tlwhs):
@@ -330,31 +330,31 @@ def plot_tracking_dict(image,
                 intbox[2:4],
                 color=color,
                 thickness=line_thickness)
-            cv2.putText(
-                im,
-                id_text, (intbox[0], intbox[1] - 25),
-                cv2.FONT_ITALIC,
-                text_scale,
-                color,
-                thickness=text_thickness)
+            # cv2.putText(
+            #     im,
+            #     id_text, (intbox[0], intbox[1] - 25),
+            #     cv2.FONT_ITALIC,
+            #     text_scale,
+            #     color,
+            #     thickness=text_thickness)
 
-            if do_break_in_counting and in_region:
-                cv2.putText(
-                    im,
-                    'Break in now.', (intbox[0], intbox[1] - 50),
-                    cv2.FONT_ITALIC,
-                    text_scale, (0, 0, 255),
-                    thickness=text_thickness)
+            # if do_break_in_counting and in_region:
+            #     cv2.putText(
+            #         im,
+            #         'Break in now.', (intbox[0], intbox[1] - 50),
+            #         cv2.FONT_ITALIC,
+            #         text_scale, (0, 0, 255),
+            #         thickness=text_thickness)
 
-            if scores is not None:
-                text = 'score: {:.2f}'.format(float(scores[i]))
-                cv2.putText(
-                    im,
-                    text, (intbox[0], intbox[1] - 6),
-                    cv2.FONT_ITALIC,
-                    text_scale,
-                    color,
-                    thickness=text_thickness)
+            # if scores is not None:
+            #     text = 'score: {:.2f}'.format(float(scores[i]))
+            #     cv2.putText(
+            #         im,
+            #         text, (intbox[0], intbox[1] - 6),
+            #         cv2.FONT_ITALIC,
+            #         text_scale,
+            #         color,
+            #         thickness=text_thickness)
         if center_traj is not None:
             for traj in center_traj:
                 for i in traj.keys():

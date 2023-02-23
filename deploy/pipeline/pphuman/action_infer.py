@@ -22,6 +22,7 @@ import math
 import paddle
 import sys
 from collections.abc import Sequence
+from collections import Counter
 
 # add deploy path of PaddleDetection to sys.path
 parent_path = os.path.abspath(os.path.join(__file__, *(['..'] * 2)))
@@ -883,12 +884,19 @@ class ColorDetect:
                 color = 'red'
         return color
 
+    def default_color(self):
+        return 'black'
+
     def to_hsv(self, rgb):
         rgb_img = rgb.reshape(1, 1, 3)
         hsv = cv2.cvtColor(rgb_img, cv2.COLOR_RGB2HSV_FULL).reshape(3).astype(float)
         hsv *= [360.0 / 255.0, 1 / 255.0, 1 / 255.0]
         return hsv
 
+    def to_hsv_2d(self, rgb):
+        hsv = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV_FULL).astype(float)
+        hsv *= [360.0 / 255.0, 1 / 255.0, 1 / 255.0]
+        return hsv
 
     def get_upper_color(self, crop_input, kpts):
         # print('Upper')
@@ -897,11 +905,32 @@ class ColorDetect:
         sample_pos = (self.uw * kpt).sum(0).reshape(-1, 2).astype(int)
         valid_idx = np.all(sample_pos >= 0, axis=1) & np.all(sample_pos < crop_input.shape[1::-1], axis=1)
         sample_pos = sample_pos[valid_idx]
-        sample = crop_input[sample_pos[:, 1], sample_pos[:, 0]] # N * 3 (RGB)
-        mean_rgb = sample.mean(0).astype(np.uint8).reshape(1, 1, 3)
-        hsv = self.to_hsv(mean_rgb)
-        # print('RGB', mean_rgb.reshape(3), 'HSV', [f'{i:.2f}' for i in hsv.tolist()])
-        return self.determine_color(mean_rgb, hsv)
+        if len(sample_pos) > 0:
+            sample = crop_input[sample_pos[:, 1], sample_pos[:, 0]] # N * 3 (RGB)
+            mean_rgb = sample.mean(0).astype(np.uint8).reshape(1, 1, 3)
+            hsv = self.to_hsv(mean_rgb)
+            # print('RGB', mean_rgb.reshape(3), 'HSV', [f'{i:.2f}' for i in hsv.tolist()])
+            return self.determine_color(mean_rgb, hsv)
+        else:
+            return self.default_color()
+
+    def get_upper_color2(self, crop_input, kpts):
+        # print('Upper')
+        kpt = kpts[[5, 6, 11, 12], :2] # 4 x 2(X,Y)
+        kpt = kpt.reshape(4, 1, 1, 2)
+        sample_pos = (self.uw * kpt).sum(0).reshape(-1, 2).astype(int)
+        valid_idx = np.all(sample_pos >= 0, axis=1) & np.all(sample_pos < crop_input.shape[1::-1], axis=1)
+        sample_pos = sample_pos[valid_idx]
+        if len(sample_pos) > 0:
+            sample = crop_input[sample_pos[:, 1], sample_pos[:, 0]] # N * 3 (RGB)
+            sample = sample.reshape(-1, 1, 3)
+
+            hsv = self.to_hsv_2d(sample)
+            # print('RGB', mean_rgb.reshape(3), 'HSV', [f'{i:.2f}' for i in hsv.tolist()])
+            color_votes = [self.determine_color(c1.reshape(3), c2.reshape(3)) for c1, c2 in zip(sample, hsv)]
+            return Counter(color_votes).most_common(1)[0][0]
+        else:
+            return self.default_color()
 
     def get_lower_color(self, crop_input, kpts):
         # print('Lower')
@@ -910,16 +939,60 @@ class ColorDetect:
         sample_pos = (self.lw * kpt).sum(0).reshape(-1, 2).astype(int)
         valid_idx = np.all(sample_pos >= 0, axis=1) & np.all(sample_pos < crop_input.shape[1::-1], axis=1)
         sample_pos = sample_pos[valid_idx]
-        sample = crop_input[sample_pos[:, 1], sample_pos[:, 0]] # N * 3 (RGB)
-        mean_rgb = sample.mean(0).astype(np.uint8).reshape(1, 1, 3)
-        hsv = self.to_hsv(mean_rgb)
-        # print('RGB', mean_rgb.reshape(3), 'HSV', [f'{i:.2f}' for i in hsv.tolist()])
-        return self.determine_color(mean_rgb, hsv)
+        if len(sample_pos) > 0:
+            sample = crop_input[sample_pos[:, 1], sample_pos[:, 0]] # N * 3 (RGB)
+            mean_rgb = sample.mean(0).astype(np.uint8).reshape(1, 1, 3)
+            hsv = self.to_hsv(mean_rgb)
+            return self.determine_color(mean_rgb, hsv)
+        else:
+            return self.default_color()
+
+    def get_lower_color2(self, crop_input, kpts):
+        # print('Lower')
+        kpt = kpts[[11, 12, 13, 14], :2] # 4 x 2(X,Y)
+        kpt = kpt.reshape(4, 1, 1, 2)
+        sample_pos = (self.lw * kpt).sum(0).reshape(-1, 2).astype(int)
+        valid_idx = np.all(sample_pos >= 0, axis=1) & np.all(sample_pos < crop_input.shape[1::-1], axis=1)
+        sample_pos = sample_pos[valid_idx]
+        if len(sample_pos) > 0:
+            sample = crop_input[sample_pos[:, 1], sample_pos[:, 0]] # N * 3 (RGB)
+            sample = sample.reshape(-1, 1, 3)
+
+            hsv = self.to_hsv_2d(sample)
+            color_votes = [self.determine_color(c1.reshape(3), c2.reshape(3)) for c1, c2 in zip(sample, hsv)]
+            return Counter(color_votes).most_common(1)[0][0]
+        else:
+            return self.default_color()
+
 
     def get_one_color(self, crop_input, kpts):
-        upcolor = self.get_upper_color(crop_input, kpts)
-        locolor = self.get_lower_color(crop_input, kpts)
+        # upcolor = self.get_upper_color(crop_input, kpts)
+        # locolor = self.get_lower_color(crop_input, kpts)
+        upcolor = self.get_upper_color2(crop_input, kpts)
+        locolor = self.get_lower_color2(crop_input, kpts)
         return upcolor, locolor
+
+    def to_chinese(self, color):
+        ret = color
+        if color == 'black':
+            ret = '黑色'
+        elif color == 'gray':
+            ret = '灰色'
+        elif color == 'white':
+            ret = '白色'
+        elif color == 'red':
+            ret = '紅色'
+        elif color == 'yellow':
+            ret = '黃色'
+        elif color == 'green':
+            ret = '綠色'
+        elif color == 'blue':
+            ret = '藍色'
+        elif color == 'purple':
+            ret = '紫色'
+        elif color == 'pink':
+            ret = '粉色'
+        return ret
 
     def predict_image(self, crop_input, kpt_pred, mot_res):
         # print('Color Detect')
@@ -930,7 +1003,10 @@ class ColorDetect:
         for img, kpt, box in zip(crop_input, kpt_pred['keypoint'], mot_res['boxes']):
             track_id = box[0]
             upcolor, locolor = self.get_one_color(img, kpt)
-            colors.append([f'upper {upcolor}', f'lower {locolor}'])
+            upcolor = self.to_chinese(upcolor)
+            locolor = self.to_chinese(locolor)
+            # colors.append([f'upper {upcolor}', f'lower {locolor}'])
+            colors.append([f'上衣 {upcolor}', f'下著 {locolor}'])
 
         return {'output': colors}
 

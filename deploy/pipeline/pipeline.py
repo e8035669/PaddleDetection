@@ -42,7 +42,7 @@ from python.infer import Detector, DetectorPicoDet
 from python.keypoint_infer import KeyPointDetector
 from python.keypoint_postprocess import translate_to_ori_images
 from python.preprocess import decode_image, ShortSizeScale
-from python.visualize import visualize_box_mask, visualize_attr, visualize_pose, visualize_action, visualize_vehicleplate, visualize_vehiclepress, visualize_lane, visualize_vehicle_retrograde, visualize_logo, read_font, visualize_action_pil
+from python.visualize import visualize_box_mask, visualize_attr, visualize_pose, visualize_action, visualize_vehicleplate, visualize_vehiclepress, visualize_lane, visualize_vehicle_retrograde, visualize_logo, read_font, visualize_action_pil, visualize_attr_pil
 
 from pptracking.python.mot_sde_infer import SDE_Detector
 from pptracking.python.mot.visualize import plot_tracking_dict
@@ -708,18 +708,38 @@ class PipePredictor(object):
             if self.cfg['visual']:
                 self.visualize_image(batch_file, batch_input, self.pipeline_res)    # 繪製影像並儲存
 
-    def capturevideo(self, capture, queue, stop_evt):
+    def capturevideo(self, capture, frame_queue, stop_evt):
         frame_id = 0
         while (not stop_evt.is_set()):
-            if queue.full():
+            if frame_queue.full():
                 time.sleep(0.01)
             else:
                 ret, frame = capture.read()
                 if not ret:
-                    return
+                    break
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                queue.put(frame_rgb)
+                frame_queue.put(frame_rgb)
         capture.release()
+
+    def capturevideo_drop(self, capture, frame_queue, stop_evt):
+        while (not stop_evt.is_set()):
+            ret, frame = capture.read()
+            if not ret:
+                break
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            try:
+                frame_queue.get_nowait()
+            except queue.Empty:
+                pass
+            frame_queue.put(frame_rgb)
+        capture.release()
+
+    def toggle_fullscreen(self):
+        now = cv2.getWindowProperty('pipeline', cv2.WND_PROP_FULLSCREEN)
+        if now == cv2.WINDOW_NORMAL:
+            cv2.setWindowProperty('pipeline', cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        else:
+            cv2.setWindowProperty('pipeline', cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL)
 
     def predict_video(self, video_file, thread_idx=0):
         # mot
@@ -813,13 +833,24 @@ class PipePredictor(object):
         illegal_parking_dict = None
         cars_count = 0
         retrograde_traj_len = 0
-        framequeue = queue.Queue(3)
 
         stop_evt = threading.Event()
-        thread = threading.Thread(
-            target=self.capturevideo, args=(capture, framequeue, stop_evt))   # 把IO量大的拿取影像的工作丟給另一個thread
+        if isinstance(video_file, int):
+            framequeue = queue.Queue(1)
+            thread = threading.Thread(
+                target=self.capturevideo_drop, args=(capture, framequeue, stop_evt))
+        else:
+            framequeue = queue.Queue(10)
+            thread = threading.Thread(
+                target=self.capturevideo, args=(capture, framequeue, stop_evt))   # 把IO量大的拿取影像的工作丟給另一個thread
+
         thread.start()
         time.sleep(1)
+
+        if self.file_name is None:
+            cv2.namedWindow('pipeline',
+                cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
+            cv2.setWindowProperty('pipeline', cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
         # while (not framequeue.empty()):
         while (True):
@@ -906,10 +937,12 @@ class PipePredictor(object):
                             if writer is not None:
                                 writer.write(im)
                             if self.file_name is None:  # use camera_id
-                                cv2.namedWindow('Paddle-Pipeline', cv2.WINDOW_KEEPRATIO)
-                                cv2.imshow('Paddle-Pipeline', im)
-                                if cv2.waitKey(1) & 0xFF == ord('q'):
+                                cv2.imshow('pipeline', im)
+                                key_in = cv2.waitKey(1) & 0xFF
+                                if key_in == ord('q'):
                                     break
+                                elif key_in == ord('w'):
+                                    self.toggle_fullscreen()
                     continue
 
                 self.pipeline_res.update(mot_res, 'mot')
@@ -1213,10 +1246,12 @@ class PipePredictor(object):
                     if writer is not None:
                         writer.write(im)
                     if self.file_name is None:  # use camera_id
-                        cv2.namedWindow('Paddle-Pipeline', cv2.WINDOW_KEEPRATIO)
-                        cv2.imshow('Paddle-Pipeline', im)
-                        if cv2.waitKey(1) & 0xFF == ord('q'):
+                        cv2.imshow('pipeline', im)
+                        key_in = cv2.waitKey(1) & 0xFF
+                        if key_in == ord('q'):
                             break
+                        elif key_in == ord('w'):
+                            self.toggle_fullscreen()
 
         stop_evt.set()
         thread.join()
@@ -1399,7 +1434,10 @@ class PipePredictor(object):
         if other_res is not None:
             boxes = mot_res['boxes'][:, 1:]
             color_res = other_res['color']['output']
-            image = visualize_attr(image, color_res, boxes)
+            if self.font_action is None:
+                self.font_action = read_font(self.font_path, int(image.shape[0] / 720. * 28))
+
+            image = visualize_attr_pil(image, color_res, boxes, font=self.font_action)
             image = np.array(image)
 
         if (self.font_logo is None) and (len(self.logo_text) > 0):

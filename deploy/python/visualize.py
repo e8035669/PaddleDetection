@@ -369,6 +369,40 @@ def visualize_attr(im, results, boxes=None, is_mtmct=False):
     return im
 
 
+def visualize_attr_pil(im, results, boxes=None, is_mtmct=False, font=None):
+    if isinstance(im, str):
+        im = Image.open(im).convert('RGB')
+    elif isinstance(im, np.ndarray):
+        im = Image.fromarray(im)
+    im_w, im_h = im.size
+    draw = ImageDraw.Draw(im)
+
+    text_scale = max(0.5, im_h / 750.)
+    text_thickness = 2
+
+    line_inter = im_h / 24.
+    for i, res in enumerate(results):
+        if boxes is None:
+            text_w = 3
+            text_h = 1
+        elif is_mtmct:
+            box = boxes[i]  # multi camera, bbox shape is x,y, w,h
+            text_w = int(box[0]) + 3
+            text_h = int(box[1])
+        else:
+            box = boxes[i]  # single camera, bbox shape is 0, 0, x,y, w,h
+            text_w = int(box[2]) + 3
+            text_h = int(box[3])
+        for text in res:
+            text_h += int(line_inter)
+            text_loc = (text_w, text_h)
+            draw.text(
+                text_loc, text,
+                (0, 255, 255), font, anchor='ls'
+            )
+    return im
+
+
 def visualize_action(im,
                      mot_boxes,
                      action_visual_collector=None,
