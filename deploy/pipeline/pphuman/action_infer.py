@@ -487,6 +487,8 @@ class DetActionRecognizer(object):
 
 
 class PpeDetRecognizer(DetActionRecognizer):
+    """工安穿戴辨識
+    """
     def __init__(self, model_dir, device='CPU', run_mode='paddle', batch_size=1, trt_min_shape=1, trt_max_shape=1280, trt_opt_shape=640, trt_calib_mode=False, cpu_threads=1, enable_mkldnn=False, output_dir='output', threshold=0.5, display_frames=20, skip_frame_num=0):
         super().__init__(model_dir, device, run_mode, batch_size, trt_min_shape, trt_max_shape, trt_opt_shape, trt_calib_mode, cpu_threads, enable_mkldnn, output_dir, threshold, display_frames, skip_frame_num)
 
@@ -511,6 +513,7 @@ class PpeDetRecognizer(DetActionRecognizer):
             valid_boxes = boxes[isvalid, :].copy()
 
             if valid_boxes.shape[0] >= 1:
+                # detection classes: 0: hat, 1: vest
                 for box in valid_boxes:
                     action_ret['class'] |= (1 << int(box[0]))
                 action_ret['score'] = float(np.mean(valid_boxes[:,1]))
@@ -568,6 +571,11 @@ class PpeDetRecognizer(DetActionRecognizer):
 
 
 class PpeDetFilter():
+    """以穿戴物件偵測的資訊及骨架資訊 進一步過濾穿戴位置不正確的物件
+
+    帽子中心要在眼睛周圍一段距離 以眼睛到肩膀爲人的大小參考
+    背心中心要在肚子範圍內
+    """
     def __init__(self) -> None:
         pass
 
@@ -593,7 +601,7 @@ class PpeDetFilter():
             abdomen_pos = keypoints[[5, 6, 11, 12], 0:2]
             abdomen_range = np.array([np.min(abdomen_pos, 0), np.max(abdomen_pos, 0)])
             abdomen_center_x = abdomen_range[:, 0].mean()
-            # 肚子寬度至少大於眼睛到肩膀距離 避免人橫著骨架沒有寬度
+            # 肚子寬度至少大於眼睛到肩膀距離 避免人側身時骨架沒有寬度
             abdomen_width = max(abdomen_range[1,0] - abdomen_range[0,0], dis_eye_shoulder)
             abdomen_range = np.array([
                 [abdomen_center_x - abdomen_width / 2, abdomen_range[0, 1]],
@@ -612,7 +620,7 @@ class PpeDetFilter():
                     else:
                         print('ID', track_id, 'Hat is filtered, ', int(distance), int(dis_eye_shoulder))
                         pass
-                elif cls_id == 1:
+                elif cls_id == 1: # vest
                     vest_center = np.mean([pos[0:2], pos[2:4]], 0)
                     # 背心中心要進入肚子區域
                     if np.all(vest_center > abdomen_range[0]) and np.all(vest_center < abdomen_range[1]):
@@ -831,7 +839,12 @@ class ClsActionRecognizer(AttrDetector):
         return result
 
 class ColorDetect:
+    """衣服顏色辨識
+
+    在上半身與下半身分別平均取m*n個取樣點 取平均後轉到HSV色彩空間決定顏色
+    """
     def __init__(self) -> None:
+        # 上半身採樣權重
         x, y = np.linspace(1, 0, 10), np.linspace(1, 0, 20)
         xx, yy = np.meshgrid(x, y, sparse=True)
         self.uw = np.stack([
@@ -842,6 +855,7 @@ class ColorDetect:
         ])
         self.uw = np.expand_dims(self.uw, -1)
 
+        # 下半身採樣權重 寬度加寬 裁切上半部可能含衣服顏色
         x, y = np.linspace(1.05, -0.05, 10), np.linspace(0.6, 0.0, 20)
         xx, yy = np.meshgrid(x, y, sparse=True)
         self.lw = np.stack([

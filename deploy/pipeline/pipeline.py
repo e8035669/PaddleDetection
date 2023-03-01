@@ -577,6 +577,7 @@ class PipePredictor(object):
         if not os.path.exists(self.font_path):
             _download_dist(self.font_url, './')
         self.font_action = None
+        self.font_skecolor = None
 
     def set_file_name(self, path):
         if type(path) == int:
@@ -719,6 +720,7 @@ class PipePredictor(object):
                     break
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 frame_queue.put(frame_rgb)
+        stop_evt.set()
         capture.release()
 
     def capturevideo_drop(self, capture, frame_queue, stop_evt):
@@ -732,6 +734,7 @@ class PipePredictor(object):
             except queue.Empty:
                 pass
             frame_queue.put(frame_rgb)
+        stop_evt.set()
         capture.release()
 
     def toggle_fullscreen(self):
@@ -861,7 +864,14 @@ class PipePredictor(object):
             if frame_id % 10 == 0:
                 print('Thread: {}; frame id: {}'.format(thread_idx, frame_id))
 
-            frame_rgb = framequeue.get()
+            try:
+                frame_rgb = framequeue.get_nowait()
+            except queue.Empty:
+                if stop_evt.is_set():
+                    break
+                else:
+                    continue
+
             if frame_id > self.warmup_frame:
                 self.pipe_timer.total_time.start()
 
@@ -1434,10 +1444,10 @@ class PipePredictor(object):
         if other_res is not None:
             boxes = mot_res['boxes'][:, 1:]
             color_res = other_res['color']['output']
-            if self.font_action is None:
-                self.font_action = read_font(self.font_path, int(image.shape[0] / 720. * 28))
+            if self.font_skecolor is None:
+                self.font_skecolor = read_font(self.font_path, int(image.shape[0] / 720. * 28))
 
-            image = visualize_attr_pil(image, color_res, boxes, font=self.font_action)
+            image = visualize_attr_pil(image, color_res, boxes, font=self.font_skecolor)
             image = np.array(image)
 
         if (self.font_logo is None) and (len(self.logo_text) > 0):

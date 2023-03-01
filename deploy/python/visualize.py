@@ -478,8 +478,11 @@ def visualize_action_pil(im,
         for mot_box in mot_boxes:
             # mot_box is a format with [mot_id, class, score, xmin, ymin, w, h]
             if mot_box[0] in id_action_dict:
-                text_position = (int(mot_box[3] + mot_box[5] * 0.75),
+                # text_position = (int(mot_box[3] + mot_box[5] * 0.75),
+                #                  int(mot_box[4] - 10))
+                text_position = (int(mot_box[3]),
                                  int(mot_box[4] - 10))
+
                 display_text = ', '.join(id_action_dict[mot_box[0]])
                 draw.text(text_position, display_text, (0, 0, 255), font, anchor="ls")
 
