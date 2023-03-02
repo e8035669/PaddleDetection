@@ -50,7 +50,7 @@ from pptracking.python.mot.utils import flow_statistic, update_object_info
 
 from pphuman.attr_infer import AttrDetector, PpeAttrDetector, Market1501AttrDetector, Market1501ColorAttrDetector
 from pphuman.video_action_infer import VideoActionRecognizer
-from pphuman.action_infer import SkeletonActionRecognizer, DetActionRecognizer, ClsActionRecognizer, ColorDetect, PpeDetRecognizer, PpeDetFilter
+from pphuman.action_infer import SkeletonActionRecognizer, DetActionRecognizer, ClsActionRecognizer, ColorDetect, PpeDetRecognizer, PpeDetFilter, PpeDetClassResFilter
 from pphuman.action_utils import KeyPointBuff, ActionVisualHelper, PpeVisualHelper
 from pphuman.reid import ReID
 from pphuman.mtmct import mtmct_process
@@ -506,6 +506,7 @@ class PipePredictor(object):
                 if self.det_class != DetClass.PPEDET:
                     raise RuntimeError('DetClass should be PPEDET')
                 self.ppedet_filter = PpeDetFilter()
+                self.ppedet_clsres_filter = PpeDetClassResFilter()
 
             if self.with_skeleton_color:
                 self.color_detect = ColorDetect()
@@ -1110,6 +1111,10 @@ class PipePredictor(object):
                         mot = self.pipeline_res.get('mot')
                         ppedet_res = self.pipeline_res.get('det_action')
                         new_ppedet_res = self.ppedet_filter.predict(mot, ppedet_res, kpt_res)
+                        self.pipeline_res.update(new_ppedet_res, 'det_action')
+
+                        ppedet_res = self.pipeline_res.get('det_action')
+                        new_ppedet_res = self.ppedet_clsres_filter.predict(mot, ppedet_res)
 
                         self.pipeline_res.update(new_ppedet_res, 'det_action')
                         if self.cfg['visual']:
@@ -1411,7 +1416,14 @@ class PipePredictor(object):
             visual_helper_for_display.append(self.det_action_visual_helper)
             if self.det_class == DetClass.PPEDET:
                 # action_to_display.append(['W', 'WH', 'WV', 'WHV'])
-                action_to_display.append(['沒穿沒戴', '帽子', '背心', '帽子背心'])
+                # action_to_display.append(['沒穿沒戴', '帽子', '背心', '帽子背心'])
+                action_to_display.append({
+                    -1: '',
+                    0: '沒穿沒戴',
+                    1: '帽子',
+                    2: '背心',
+                    3: '帽子背心',
+                })
                 # image = visualize_box_mask(
                 #     image,
                 #     {'boxes': np.concatenate([b['boxes'] for i, b in det_action_res.items() if i in ids])},

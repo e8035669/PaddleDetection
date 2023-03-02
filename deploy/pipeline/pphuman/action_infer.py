@@ -22,7 +22,7 @@ import math
 import paddle
 import sys
 from collections.abc import Sequence
-from collections import Counter
+from collections import Counter, deque
 
 # add deploy path of PaddleDetection to sys.path
 parent_path = os.path.abspath(os.path.join(__file__, *(['..'] * 2)))
@@ -637,6 +637,38 @@ class PpeDetFilter():
         return ret_ppedet_res
 
 
+class PpeDetClassResFilter:
+    def __init__(self, max_len=59) -> None:
+        self.max_len = max_len
+        self.data = {}
+        pass
+
+    def predict(self, mot, ppedet_res):
+        ret_ppedet_res = []
+        for track_bbox in mot['boxes']:
+            track_id = track_bbox[0]
+            track_data = ppedet_res[track_id]
+            # print(track_data.keys())
+
+            if track_id not in self.data:
+                self.data[track_id] = deque(maxlen=self.max_len)
+
+            history = self.data[track_id]
+            # print(track_id, history)
+
+            history.append(track_data['class'])
+
+            max_cls = -1
+            if len(history) > history.maxlen / 2:
+                most_common = Counter(history).most_common(1)[0]
+                if most_common[1] > len(history) / 2:
+                    max_cls = most_common[0]
+
+            track_data['class'] = max_cls
+            ret_ppedet_res.append((track_id, track_data))
+        return ret_ppedet_res
+
+
 class ClsActionRecognizer(AttrDetector):
     """在物件框中的圖片 再執行一次分類模型
 
@@ -844,6 +876,7 @@ class ColorDetect:
     在上半身與下半身分別平均取m*n個取樣點 取平均後轉到HSV色彩空間決定顏色
     """
     def __init__(self) -> None:
+        self.kpt_thres = 0.5
         # 上半身採樣權重
         x, y = np.linspace(1, 0, 10), np.linspace(1, 0, 20)
         xx, yy = np.meshgrid(x, y, sparse=True)
@@ -914,6 +947,9 @@ class ColorDetect:
 
     def get_upper_color(self, crop_input, kpts):
         # print('Upper')
+        if np.any(kpts[[5, 6, 11, 12], 2] < self.kpt_thres):
+            return None
+
         kpt = kpts[[5, 6, 11, 12], :2] # 4 x 2(X,Y)
         kpt = kpt.reshape(4, 1, 1, 2)
         sample_pos = (self.uw * kpt).sum(0).reshape(-1, 2).astype(int)
@@ -930,6 +966,9 @@ class ColorDetect:
 
     def get_upper_color2(self, crop_input, kpts):
         # print('Upper')
+        if np.any(kpts[[5, 6, 11, 12], 2] < self.kpt_thres):
+            return None
+
         kpt = kpts[[5, 6, 11, 12], :2] # 4 x 2(X,Y)
         kpt = kpt.reshape(4, 1, 1, 2)
         sample_pos = (self.uw * kpt).sum(0).reshape(-1, 2).astype(int)
@@ -948,6 +987,9 @@ class ColorDetect:
 
     def get_lower_color(self, crop_input, kpts):
         # print('Lower')
+        if np.any(kpts[[11, 12, 13, 14], 2] < self.kpt_thres):
+            return None
+
         kpt = kpts[[11, 12, 13, 14], :2] # 4 x 2(X,Y)
         kpt = kpt.reshape(4, 1, 1, 2)
         sample_pos = (self.lw * kpt).sum(0).reshape(-1, 2).astype(int)
@@ -963,6 +1005,9 @@ class ColorDetect:
 
     def get_lower_color2(self, crop_input, kpts):
         # print('Lower')
+        if np.any(kpts[[11, 12, 13, 14], 2] < self.kpt_thres):
+            return None
+
         kpt = kpts[[11, 12, 13, 14], :2] # 4 x 2(X,Y)
         kpt = kpt.reshape(4, 1, 1, 2)
         sample_pos = (self.lw * kpt).sum(0).reshape(-1, 2).astype(int)
@@ -1017,10 +1062,20 @@ class ColorDetect:
         for img, kpt, box in zip(crop_input, kpt_pred['keypoint'], mot_res['boxes']):
             track_id = box[0]
             upcolor, locolor = self.get_one_color(img, kpt)
-            upcolor = self.to_chinese(upcolor)
-            locolor = self.to_chinese(locolor)
+            msg = []
+            if upcolor is not None:
+                upcolor = self.to_chinese(upcolor)
+                msg.append(f'上衣 {upcolor}')
+            else:
+                msg.append('')
+
+            if locolor is not None:
+                locolor = self.to_chinese(locolor)
+                msg.append(f'下著 {locolor}')
+            else:
+                msg.append('')
             # colors.append([f'upper {upcolor}', f'lower {locolor}'])
-            colors.append([f'上衣 {upcolor}', f'下著 {locolor}'])
+            colors.append(msg)
 
         return {'output': colors}
 
